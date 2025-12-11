@@ -16,70 +16,7 @@ foreach ($stock as &$row) {
     $row['sl'] = $i++; // Add the row number
     $row['minimum_threshold'] = $minimum_threshold;
 }
-$online   = $obj->countOnlineUsers(1);
-$offline  = $obj->countOfflineUsers(1);
-$disabled = $obj->countDisabledUsers(1);
 ?>
-
-<div class="col-xxl-3 col-sm-6">
-    <div class="card px-16 py-12 shadow-none radius-8 border h-auto text-white" style="background: linear-gradient(135deg, #28a745, #218838);">
-        <a href="?page=mikrotik_online_secret" class="text-white text-decoration-none">
-            <div class="card-body p-0 d-flex align-items-center justify-content-between">
-                <!-- Icon Section -->
-                <div class="w-64-px h-64-px radius-16 bg-white bg-opacity-25 d-flex justify-content-center align-items-center me-16">
-                    <span class="w-40-px h-40-px bg-success d-flex justify-content-center align-items-center radius-8 h6 mb-0 text-white">
-                        <iconify-icon icon="flowbite:users-group-solid" class="icon"></iconify-icon>
-                    </span>
-                </div>
-                <!-- Text Section -->
-                <div class="text-end">
-                    <h6 class="fw-semibold my-1"><?php echo $online ?? 0; ?></h6>
-                    <span class="mb-0 fw-medium text-white-50 text-md">Total Online Users</span>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
-
-<div class="col-xxl-3 col-sm-6">
-    <div class="card px-16 py-12 shadow-none radius-8 border h-auto text-white" style="background: linear-gradient(135deg, #ffc107, #ff9800);">
-        <a href="?page=mikrotik_offline" class="text-white text-decoration-none">
-            <div class="card-body p-0 d-flex align-items-center justify-content-between">
-                <!-- Icon Section -->
-                <div class="w-64-px h-64-px radius-16 bg-white bg-opacity-25 d-flex justify-content-center align-items-center me-16">
-                    <span class="w-40-px h-40-px bg-warning d-flex justify-content-center align-items-center radius-8 h6 mb-0 text-white">
-                        <iconify-icon icon="flowbite:users-group-solid" class="icon"></iconify-icon>
-                    </span>
-                </div>
-                <!-- Text Section -->
-                <div class="text-end">
-                    <h6 class="fw-semibold my-1"><?php echo $offline ?? 0; ?></h6>
-                    <span class="mb-0 fw-medium text-white-50 text-md">Total Offline Users</span>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
-
-<div class="col-xxl-3 col-sm-6">
-    <div class="card px-16 py-12 shadow-none radius-8 border h-auto text-white" style="background: linear-gradient(135deg, #dc3545, #a71d2a);">
-        <a href="" class="text-white text-decoration-none">
-            <div class="card-body p-0 d-flex align-items-center justify-content-between">
-                <!-- Icon Section -->
-                <div class="w-64-px h-64-px radius-16 bg-white bg-opacity-25 d-flex justify-content-center align-items-center me-16">
-                    <span class="w-40-px h-40-px bg-danger d-flex justify-content-center align-items-center radius-8 h6 mb-0 text-white">
-                        <iconify-icon icon="flowbite:users-group-solid" class="icon"></iconify-icon>
-                    </span>
-                </div>
-                <!-- Text Section -->
-                <div class="text-end">
-                    <h6 class="fw-semibold my-1"><?php echo $disabled ?? 0; ?></h6>
-                    <span class="mb-0 fw-medium text-white-50 text-md">Total Disabled Users</span>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
 
 <div class="col-xxl-3 col-sm-6">
     <div class="card px-16 py-12 shadow-none radius-8 border h-auto bg-gradient-start-3">
