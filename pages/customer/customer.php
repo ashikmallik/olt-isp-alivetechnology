@@ -1,0 +1,487 @@
+<?php
+$usermikrotik = 0;
+// Edit 
+if (isset($_GET['token'])) {
+    $token = $_GET['token'];
+    $customer = $obj->getSingleData("tbl_agent", ['where' => ['ag_id', '=', $token]]);
+    if (isset($customer['mikrotik_id'])) {
+        $usermikrotik = $customer['mikrotik_id'];
+        $usersecret = $customer['ip'];
+    }
+}
+// End edit
+$mikrotikget = isset($_GET['mikrotik']) ? $_GET['mikrotik'] : $usermikrotik;
+$editMikrotik = $obj->getSingleData('mikrotik_user', ['where' => ['id', '=', $usermikrotik]]);
+
+// echo $mikrotikget;
+$mikrotikConnect = ($obj->checkConnection($mikrotikget)) ? true : false;
+$activeMikrotik = $obj->getSingleData('mikrotik_user', ['where' => ['status', '=', '1']]);
+// var_dump($editMikrotik);
+$checkconenctM = false;
+if ($activeMikrotik) {
+    if ($mikrotikConnect) {
+        $checkconenctM = true;
+    }
+} else {
+    $checkconenctM = true;
+}
+
+// var_dump($obj->checkConnection($mikrotikget));
+if (isset($_POST['submit'])) {
+
+    $data = $obj->rawSql("SELECT ag_id FROM tbl_agent ORDER BY created_at DESC LIMIT 1");
+    // if (!$data) {
+    //     $data[0]["ag_id"] = 0;
+    // }
+    // if (($data[0]["ag_id"] + 1) < 10) {
+    //     $STD = "CUS000";
+    // } else if (($data[0]["ag_id"] + 1) < 100) {
+    //     $STD = "CUS000";
+    // } else if (($data[0]["ag_id"] + 1) < 1000) {
+    //     $STD = "CUS00";
+    // } else if (($data[0]["ag_id"] + 1) < 10000) {
+    //     $STD = "CUS0";
+    // } else {
+    //     $STD = "CUS";
+    // }
+    // $STD .= $data[0]["ag_id"] + 1;
+
+
+    $fromInsert = [
+        // 'cus_id' => $_POST['ip'],
+        'ag_name' => $_POST['ag_name'],
+        'ip' => $_POST['ip'],
+        'type' => 1,
+        'mikrotik_disconnect' => $_POST['mikrotik_disconnect'],
+        'taka' => $obj->convertBanglaToEnglishNumbers($_POST['taka']),
+        'mb' => $_POST['mb'],
+        'int_mb' => intval($_POST['mb']),
+        'ag_status' => $_POST['ag_status'],
+        'ag_mobile_no' => $obj->convertBanglaToEnglishNumbers($_POST['ag_mobile_no']),
+        'regular_mobile' => $obj->convertBanglaToEnglishNumbers($_POST['regular_mobile']),
+        'ag_office_address' => $_POST['address'],
+        'ag_email' => $_POST['ag_email'],
+        'national_id' => $_POST['national_id'],
+        //  'nationalidphoto'=>$_POST[''],
+        'gender' => $_POST['gender'],
+        'onumac' => $_POST['onumac'],
+        'fibercode' => $_POST['fibercode'],
+        'connectiontype' => $_POST['connectiontype'],
+        'agent_type' => $_POST['agent_type'],
+        'billing_person_id' => $_POST['billing_person_id'],
+        'entry_by' => $userId,
+        'entry_date' => date('Y-m-d'),
+        'connection_date' => $_POST['connection_date'],
+        'remark' => $_POST['remark'],
+    ];
+
+    if ($mikrotikConnect) {
+        $fromInsert['mikrotik_id'] = $_POST['mikrotik_id'];
+        $fromInsert['queue_password'] = $_POST['queue_password'];
+    }
+    if (isset($_POST['zone'])) {
+        $fromInsert['zone'] = $_POST['zone'];
+    }
+    if (isset($_POST['sub_id'])) {
+        $fromInsert['sub_zone'] = $_POST['sub_id'];
+    }
+    if (isset($_POST['destination']) && !empty($_POST['destination'] && $_POST['destination'] != '')) {
+        $fromInsert['destination'] = $_POST['destination'] ?? null;
+    }
+
+    $lastinsert = $obj->insertData('tbl_agent', $fromInsert);
+
+    // if (!$lastinsert) {
+    //     $lastinsert = 1;
+    // }
+    if ($lastinsert < 10) {
+        $STD = "CUS000";
+    } else if ($lastinsert < 100) {
+        $STD = "CUS000";
+    } else if ($lastinsert < 1000) {
+        $STD = "CUS00";
+    } else if ($lastinsert < 10000) {
+        $STD = "CUS0";
+    } else {
+        $STD = "CUS";
+    }
+    $STD .= $lastinsert;
+
+    $fromUpdate['cus_id'] = $STD;
+    $obj->updateData('tbl_agent', $fromUpdate, ['ag_id' => $lastinsert]);
+
+
+    $obj->insertData('customer_billing', ['agid' => $lastinsert, 'cusid' => $_POST['ip'], 'monthlybill' => $obj->convertBanglaToEnglishNumbers($_POST['taka']), 'generate_at' => '2024-01-01']);
+
+
+    // create activity log new cusomer
+    $obj->createActivityLog($_SESSION['userid'], '2', '2', 'tbl_agent', $lastinsert, null, null, 'New customer created with Customer ID: ' . $STD, null, null, false, false, null, $lastinsert);
+
+    // if (isset($_POST['runningpaid']) && !empty($_POST['runningpaid'])) {
+    //     $obj->insertData("tbl_account", [
+    //         'cus_id' => $STD,
+    //         'agent_id' => $lastinsert,
+    //         'acc_type' => '5',
+    //         'acc_amount' => $_POST['runningpaid'],
+    //         'acc_description' => 'Opening and Running Month amount Payment',
+    //         'entry_by' => $userId,
+    //         'entry_date' => date('Y-m-d'),
+    //         'update_by' => $userId
+    //     ]);
+    // }
+
+    if (isset($_POST['connect_charge']) && !empty($_POST['connect_charge']) && $_POST['connect_charge'] > 0) {
+        $obj->insertData("tbl_account", [
+            'cus_id' => $STD,
+            'agent_id' => $lastinsert,
+            'acc_amount' => $_POST['connect_charge'],
+            'acc_type' => '4', //connection charge sent tbl_account
+            'acc_description' => 'Connection Charge',
+            'entry_by' => $userId,
+            'entry_date' => date('Y-m-d'),
+            'update_by' => $userId
+        ]);
+    }
+
+
+    if (isset($_POST['effected']) && $_POST['effected']) {
+
+        if (isset($_POST['runningpaid']) && $_POST['runningpaid'] > 0) {
+            $obj->rawSql("SELECT function_bill_update(" . $lastinsert . ", 'billpay', " . $_POST['runningpaid'] . ", 0, '',$userId, 1, '') AS function_bill_update");
+        }
+        $obj->rawSql("SELECT function_bill_update(" . $lastinsert . ", 'effectedUpdate', 0, 0, '', 0, 1,'') AS function_bill_update");
+
+        // update monthly bill making check
+        $inActiveAgent = $_POST['ag_status'] == 0 ? 1 : 0;
+        $activeAgent = $_POST['ag_status'] == 1 ? 1 : 0;
+        $freeAgent = $_POST['ag_status'] == 3 ? 1 : 0; // 3 = discontinue but monthly bill making check table 3 = free
+        $discontinueAgent = $_POST['ag_status'] == 2 ? 1 : 0; // 2 = free but monthly bill making check table 2 = discontinue
+        $generateAmount = $_POST['ag_status'] == 1 ? $_POST['taka'] : 0;
+        $monthYear = date('M-Y');
+        $obj->rawSqlSingle(
+            "UPDATE monthly_bill_making_check 
+                SET 
+                    tbillgenerate = tbillgenerate + $generateAmount, 
+                    tcustomer = tcustomer + 1, 
+                    tactivec = tactivec + $activeAgent,
+                    tinactivec = tinactivec + $inActiveAgent,
+                    tdiscontinuec = tdiscontinuec + $discontinueAgent, -- this is actually free customer info
+                    tfreec = tfreec + $freeAgent -- this is actually dicontinue customer info
+            WHERE month_year = '$monthYear'
+            "
+        );
+
+        // create activity log for bill Geneate
+        $obj->createActivityLog($_SESSION['userid'], '3', '2', 'tbl_agent', $lastinsert, null, null, 'Bill generated for Customer ID: ' . $STD, null, null, false, false, null, $lastinsert);
+    } else {
+        if ($_POST['runningpaid'] > 0) {
+            $obj->insertData("tbl_account", [
+                'cus_id' => $STD,
+                'agent_id' => $lastinsert,
+                'acc_type' => '5',
+                'acc_amount' => $_POST['runningpaid'],
+                'acc_description' => 'Opening and Running Month amount Payment',
+                'entry_by' => $userId,
+                'entry_date' => date('Y-m-d'),
+                'update_by' => $userId
+            ]);
+        }
+    }
+
+
+    if ($mikrotikConnect) {
+        $obj->createNewSecret($mikrotikget, $_POST['ip'], $_POST['queue_password'], $_POST['mb'], $_POST['ip'], $_POST['remark']);
+
+        if (($_POST['ag_status'] == 0) || ($_POST['ag_status'] == 3)) {
+            $obj->disableSingleSecret($mikrotikget, $_POST['ip']);
+        }
+    }
+
+    // send sms to the customer
+    if (isset($_POST["smssend"]) && $_POST["smssend"] == 'smssend') {
+        $customer = $obj->rawSqlSingle("SELECT * FROM tbl_agent WHERE ag_id = $lastinsert");
+        $mobile = "88" . strval($customer['ag_mobile_no']);
+        $customerName = isset($customer['ag_name']) ? $customer['ag_name'] : NULL;
+        $cusId = isset($customer['cus_id']) ? $customer['cus_id'] : NULL;
+        $cusIp = isset($customer['ip']) ? $customer['ip'] : NULL;
+        $cusPackage = isset($customer['mb']) ? $customer['mb'] : NULL;
+        $cusbill = isset($customer['taka']) ? $customer['taka'] : NULL;
+
+
+        // SMS SEND
+        $var_replacement = [
+            '{CUSTOMER_NAME}' => $customerName,
+            // '{PACKAGE_NAME}' => $cusPackage,
+            '{PACKAGE_NAME}' =>  $obj->rawSqlSingle("SELECT package_name FROM tbl_package WHERE net_speed = '$cusPackage'")['package_name'],
+            '{MONTHLY_BILL}' => $cusbill,
+            '{CUSTOMER_ID}' => $cusId,
+            '{IP_ADDRESS}' => $cusIp,
+        ];
+        $newCustomerSmsInfo = $obj->details_by_cond("sms", "status='4'");
+        $sms_b = isset($newCustomerSmsInfo['smsbody']) ? $newCustomerSmsInfo['smsbody'] : NULL;
+        $sms_b = strtr($sms_b, $var_replacement);
+        $message = "$sms_b";
+        $sms = $obj->sendsms($mobile, $message);
+        // $sms = $obj->sendsms($mobile, "Dear $customerName, ID: $cusId, Username:$cusIp, Package:$cusPackage, Monthly Bill:$cusbill ");
+    }
+
+
+  	 $obj->notificationStore("New Customer Add  Successfull", 'success');
+ 	 echo ' <script>window.location="?page=customer_view"; </script>';
+    exit;
+}
+
+
+if (isset($_POST['update']) && isset($_POST['ag_id']) && !empty(isset($_POST['ag_id']))) {
+    if (isset($_POST['previous_due']) && is_numeric($_POST['previous_due'])) {
+        // $obj->rawSql("SELECT function_bill_update(" . $_POST['ag_id'] . ", 'previousdue', " . $_POST['previous_due'] . ", '', '','') AS function_bill_update");
+        $obj->rawSql("CALL billUpdate(" . $_POST['ag_id'] . ", 'previousdue', " . $_POST['previous_due'] . ", 0, '', 1, 1,'')");
+    }
+
+    $fromUpdate = [
+        // 'cus_id'=>$_POST[''],
+        'ag_name' => $_POST['ag_name'],
+        'ip' => $_POST['ip'],
+        'type' => 1,
+        'mikrotik_disconnect' => $_POST['mikrotik_disconnect'],
+        'taka' => $obj->convertBanglaToEnglishNumbers($_POST['taka']),
+        'mb' => $_POST['mb'],
+        'int_mb' => intval($_POST['mb']),
+        'ag_status' => $_POST['ag_status'],
+        'ag_mobile_no' => $obj->convertBanglaToEnglishNumbers($_POST['ag_mobile_no']),
+        'regular_mobile' => $obj->convertBanglaToEnglishNumbers($_POST['regular_mobile']),
+        'ag_office_address' => $_POST['address'],
+        'zone' => $_POST['zone'],
+        'sub_zone' =>intval( $_POST['sub_id']) ?? null,
+        'destination' => !empty($_POST['destination']) ? $_POST['destination'] : null,
+        'ag_email' => $_POST['ag_email'],
+        'national_id' => $_POST['national_id'],
+        //  'nationalidphoto'=>$_POST[''],
+        'gender' => $_POST['gender'],
+        'onumac' => $_POST['onumac'],
+        'fibercode' => $_POST['fibercode'],
+        'connectiontype' => $_POST['connectiontype'],
+        'agent_type' => $_POST['agent_type'],
+        'inactive_date' => $_POST['ag_status'] == 0 ? date('Y-m-d') : null,
+        'billing_person_id' => $_POST['billing_person_id'],
+        'entry_by' => $userId,
+        // 'entry_date' => date('Y-m-d', strtotime('first day of this month')),
+        'connection_date' => $_POST['connection_date'],
+        'remark' => $_POST['remark'],
+    ];
+
+
+    if ($mikrotikConnect) {
+
+        $fromUpdate['queue_password'] = $_POST['queue_password'];
+
+        // $obj->updateExistingSecret($mikrotikget, $_POST['ip'], $_POST['queue_password'], $_POST['mb'], $_POST['remark']);
+        $obj->updateExistingSecret($mikrotikget, $_POST['ip'], $_POST['queue_password'], $_POST['mb'], $customer['ip'], $_POST['remark']);
+
+
+        $obj->updateSecretPassword($mikrotikget, $customer['ip'], $_POST['queue_password']);
+        $obj->updateExistingSecretProfile($mikrotikget, $_POST['ip'], $_POST['mb']);
+        if (($_POST['ag_status'] == 0) || ($_POST['ag_status'] == 3)) {
+            $obj->disableSingleSecret($mikrotikget, $_POST['ip']);
+        } else {
+            $obj->enableSingleSecret($mikrotikget, $_POST['ip']);
+        }
+    }
+
+
+    // ----------------- update package with bill generate upate start ----------------
+    if ($_POST['taka'] != $_POST['taka_cache']) {
+        // if (isset($_POST['change']) && $_POST['change']) {
+        // $obj->rawSql("SELECT function_bill_update(" . $_POST['ag_id'] . ", 'package', " . $_POST['taka'] . ", '', 'change','') AS function_bill_update");
+        $obj->rawSql("CALL billUpdate(" . $_POST['ag_id'] . ", 'package', " . $_POST['taka'] . ", 0, 'change', 0, 1,'')");
+        // } else {
+        // $obj->rawSql("SELECT function_bill_update(" . $_POST['ag_id'] . ", 'package', " . $_POST['taka'] . ", '', '','') AS function_bill_update");
+        // }
+
+        $monthYear = date('M-Y');
+        $obj->rawSqlSingle(
+            "UPDATE monthly_bill_making_check 
+                SET tbillgenerate = (tbillgenerate + $_POST[taka]) - $_POST[taka_cache]
+            WHERE month_year = '$monthYear'
+            "
+        );
+
+        // create activity log for permanently delete customer
+        $obj->createActivityLog($_SESSION['userid'], '3', '2', 'tbl_agent', $_POST['ag_id'], null, null, 'Changed bill from ' . $_POST['taka_cache'] . ' to ' . $_POST['taka'] . ' for Customer ID: ' . $_POST['customer_id'], null, null, false, false, null, $_POST['ag_id']);
+    }
+    //----------------- update package with bill generate upate end ----------------
+
+
+
+    $obj->updateData('tbl_agent', $fromUpdate, ['ag_id' => $_POST['ag_id']]);
+    $lastupdate = $_POST['ag_id'];
+
+    if (isset($_POST['connect_charge']) && !empty($_POST['connect_charge']) && $_POST['connect_charge'] > 0) {
+        $obj->insertData("tbl_account", [
+            'cus_id' => $_POST['customer_id'],
+            'agent_id' => $lastupdate,
+            'acc_amount' => $_POST['connect_charge'],
+            'acc_type' => '4', //connection charge sent tbl_account
+            'acc_description' => 'Connection Charge',
+            'entry_by' => $userId,
+            'entry_date' => date('Y-m-d'),
+            'update_by' => $userId
+        ]);
+    }
+
+
+    if (isset($_POST['effected']) && $_POST['effected']) {
+        if (isset($_POST['runningpaid']) && $_POST['runningpaid'] > 0) {
+            $obj->rawSql("SELECT function_bill_update(" . $lastupdate . ", 'billpay', " . $_POST['runningpaid'] . ", 0, '',$userId, 1,'') AS function_bill_update");
+        }
+
+        $obj->rawSql("SELECT function_bill_update(" . $lastupdate . ", 'effectedUpdate', 0, 0, '', 0, 1,'') AS function_bill_update");
+
+        // update monthly bill making check
+        $inActiveAgent = $_POST['ag_status'] == 0 ? 1 : 0;
+        $activeAgent = $_POST['ag_status'] == 1 ? 1 : 0;
+        $freeAgent = $_POST['ag_status'] == 3 ? 1 : 0; // 3 = discontinue but monthly bill making check table 3 = free
+        $discontinueAgent = $_POST['ag_status'] == 2 ? 1 : 0; // 2 = free but monthly bill making check table 2 = discontinue
+        $generateAmount = $_POST['ag_status'] == 1 ? $_POST['taka'] : 0;
+
+        $monthYear = date('M-Y');
+        $obj->rawSqlSingle(
+            "UPDATE monthly_bill_making_check 
+                SET 
+                    tbillgenerate = tbillgenerate + $generateAmount, 
+                    tcustomer = tcustomer + 1, 
+                    tactivec = tactivec + $activeAgent,
+                    tinactivec = tinactivec + $inActiveAgent,
+                    tdiscontinuec = tdiscontinuec + $discontinueAgent, -- this is actually free customer info
+                    tfreec = tfreec + $freeAgent -- this is actually dicontinue customer info
+            WHERE month_year = '$monthYear'
+            "
+        );
+
+        // create activity log for bill Geneate
+        $obj->createActivityLog($_SESSION['userid'], '3', '2', 'tbl_agent', $_POST['ag_id'], null, null, 'Bill generated for Customer ID: ' . $_POST['customer_id'], null, null, false, false, null, $_POST['ag_id']);
+    } else {
+        if ($_POST['runningpaid'] > 0) {
+            $obj->insertData("tbl_account", [
+                'cus_id' => $_POST['customer_id'],
+                'agent_id' => $lastupdate,
+                'acc_type' => '5',
+                'acc_amount' => $_POST['runningpaid'],
+                'acc_description' => 'Opening and Running Month amount Payment',
+                'entry_by' => $userId,
+                'entry_date' => date('Y-m-d'),
+                'update_by' => $userId
+            ]);
+        }
+    }
+    $obj->notificationStore("Customer update  Successfull", 'success');
+    echo ' <script>window.location="?page=customer_view"; </script>';
+    exit;
+}
+
+
+
+if (isset($_POST['transfareUser'])) {
+    $newMikrotikId = $_POST['newmkid'];
+    $oldMikrotikId = $_POST['oldmkid'];
+    $customerId    = $_POST['customerId'];
+
+    $userSecret    = trim($_POST['usecret']);
+    $userPassword  = $_POST['upassword'];
+    $userProfile   = $_POST['uprofile'];
+    $comment       = $_POST['ucomment'];
+    // echo $token;
+    // exit;
+
+    // 1. Get new Mikrotik connection details
+    $mk = $obj->getSingleData("mikrotik_user", ['where' => ['id', '=', $newMikrotikId]]);
+    $mkObj = new Mikrotik($mk["mik_ip"], $mk["mik_port"], $mk["mik_username"], $mk["mik_password"]);
+
+    if ($mkObj->connected) {
+        // 2. Create new PPPoE secret
+        // $createSuccess = $obj->createNewSecret($newMikrotikId, $userSecret, $userPassword, $userProfile, $comment);
+        $createSuccess = $obj->createNewSecret($newMikrotikId, $userSecret, $userPassword, $userProfile, $userSecret, $comment);
+
+        if ($createSuccess) {
+            // 3. Update database only if creation successful
+            // $obj->updateCustomerMikrotik($customerId, $newMikrotikId);
+            $obj->updateData('tbl_agent', ['mikrotik_id' => $newMikrotikId], ['ag_id' => $token]);
+
+            // 4. Delete old secret from previous Mikrotik
+            $oldMikrotik = $obj->getSingleData("mikrotik_user", ['where' => ['id', '=', $oldMikrotikId]]);
+            $mkOldObj = new Mikrotik($oldMikrotik["mik_ip"], $oldMikrotik["mik_port"], $oldMikrotik["mik_username"], $oldMikrotik["mik_password"]);
+
+            if ($mkOldObj->connected) {
+                $obj->deleteSecret($oldMikrotikId, $userSecret);
+            }
+
+            echo "Customer transferred successfully!";
+        } else {
+            echo "Could not create secret on the new Mikrotik!";
+        }
+    } else {
+        echo "Could not connect to the new Mikrotik!";
+    }
+}
+
+
+
+
+
+if (isset($_GET['restore-token_full'])) {
+    $fullDelete = $_GET['restore-token_full'];
+    $obj->deleteData("tbl_agent", ['where' => ['ag_id', '=', $fullDelete]]);
+
+    // create activity log for permanently delete customer
+    $obj->createActivityLog($_SESSION['userid'], '4', '2', 'tbl_agent', $_GET['restore-token_full'], null, null, 'Permanently Deleted Customer' . ' [customer_id:' . $_GET['restore-token_full'] . ']', null, null, false, false, null, $_GET['restore-token_full']);
+}
+if (isset($_GET['restore-token'])) {
+    $obj->updateData('tbl_agent', ['deleted_at' => null], ['ag_id' => $_GET['restore-token']]);
+    // create activity log for restore deleted customer 
+    $obj->createActivityLog($_SESSION['userid'], '4', '2', 'tbl_agent', $_GET['restore-token'], null, null, 'Restored Deleted Customer' . ' [customer_id:' . $_GET['restore-token'] . ']', null, null, false, false, null, $_GET['restore-token']);
+}
+// delete 
+if ($obj->userWorkPermission('delete')) {
+    if (isset($_GET['delete-token'])) {
+        $token = isset($_GET['delete-token']) ? $_GET['delete-token'] : null;
+        $deleteCustomer = $obj->getSingleData('tbl_agent', ['where' => [['ag_id', '=', $token]]]);
+        $mkkId = $deleteCustomer['mikrotik_id'];
+        $deleted = true;
+        $obj->updateData('tbl_agent', ['deleted_at' => date('Y-m-d H:i:m')], ['ag_id' => $_GET['delete-token']]);
+        $mk = $obj->getSingleData("mikrotik_user", ['where' => ['id', '=', $mkkId]]);
+
+        $mkObj = new Mikrotik($mk["mik_ip"], $mk["mik_port"], $mk["mik_username"], $mk["mik_password"]);
+        if ($mkObj->connected) {
+
+            $obj->removeSecret($deleteCustomer['mikrotik_id'], $deleteCustomer['ip']);
+        }
+
+        // create activity log for delete customer
+        $obj->createActivityLog($_SESSION['userid'], '4', '2', 'tbl_agent', $_GET['delete-token'], null, null, 'Temporary Deleted Customer' . ' [customer_id:' . $_GET['delete-token'] . '] ' . ' [customer_ip/user_name:' . $deleteCustomer['ip'] . ']', null, null, false, false, null, $_GET['delete-token']);
+
+        if ($deleted) {
+            $obj->notificationStore('Customer is Deleted', 'success');
+            echo '<script>window.location = "?page=customer_view";</script>';
+        } else {
+            $obj->notificationStore('Delete Failed', 'danger');
+            echo '<script>window.location = "?page=customer_view";</script>';
+        }
+        die;
+    }
+}
+
+
+
+// EDit page
+if (isset($_GET['token'])) {
+    $mikrotiksecret = ($checkconenctM) ? $obj->showSingleSecret($usermikrotik, "$usersecret") : false;
+}
+
+
+// EDit page
+
+
+
+
+
+$obj->notificationShow();

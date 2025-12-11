@@ -1,0 +1,145 @@
+schedule_disconnect.phpschedule_disconnect.phpschedule_disconnect.phpschedule_disconnect.phptext/x-generic schedule_disconnect.php ( PHP script, UTF-8 Unicode text )
+<?php
+date_default_timezone_set('Asia/Dhaka');
+$date_time = date('Y-m-d g:i:sA');
+$date = date('Y-m-d');
+$day = date('d');
+
+$dd = 21;
+$m = date('m');
+$y = date('Y');
+
+require(__DIR__ . '/services/Model.php');
+
+
+$obj = new Model();
+
+$adminMobile = $obj->getSettingValue('mobile', 'mobile');
+if (strpos($adminMobile, '88') !== 0) {
+    $adminMobile = '88' . $adminMobile;
+}
+    
+
+
+$totaluser = 0;
+$disconnectCount = 0;
+
+$isMikrotikDisconnect = $obj->getSettingValue('mikrotikDisconCronJob', 'mikrotikDisconCronJob');
+$cronSmsDay = $obj->getSettingValue('cronSmsSend', 'cronSmsSend');
+
+
+
+if (isset($isMikrotikDisconnect) && $isMikrotikDisconnect == 'active') {
+    $agWhereCon = "";
+    $MikDisconBillStatusRes = $obj->getSettingValue('MikDisconBillStatus', 'MikDisconBillStatus');
+    if (isset($MikDisconBillStatusRes) && $MikDisconBillStatusRes == 'inc_par_paid') {
+        $agWhereCon = "AND customer_billing.dueadvance > 0";
+    } else {
+        $agWhereCon = "AND tbl_agent.bill_status = '0' AND customer_billing.dueadvance > 0";
+    }
+
+    foreach ($obj->view_all('mikrotik_user') as $mikrotiks) {
+        $mikrotikId = $mikrotiks['id'];
+        
+        // $agents = $obj->view_all_by_cond("tbl_agent", "ag_status='1' AND mikrotik_disconnect = '$dd' AND bill_status= '$ag_bill_status' AND deleted_at IS NULL AND mikrotik_id='" . $mikrotiks['id'] . "' ORDER BY `ag_id` ASC");
+
+        $agents = $obj->raw_sql(
+            "SELECT *
+            FROM tbl_agent
+            LE0FT JOIN customer_billing ON tbl_agent.ag_id = customer_billing.agid
+            WHERE tbl_agent.ag_status = '1'
+            AND tbl_agent.mikrotik_disconnect = '$dd'
+            AND tbl_agent.deleted_at IS NULL
+            AND tbl_agent.mikrotik_id='" . $mikrotiks['id'] . "'
+            $agWhereCon
+            ORDER BY `ag_id` ASC
+            "
+        );
+
+        $totaluser += count($agents);
+        var_dump($agents);exit;
+        if ($obj->checkConnection($mikrotikId)) {
+            foreach ($agents as $agent) {
+                $obj->disableSingleSecret($mikrotikId, $agent['ip']);
+                $disconnectCount++;
+            }       
+            
+        } else {
+            if (isset($mikrotiks['status']) && $mikrotiks['status'] == 0) {
+                $mikrotikIP = $mikrotiks['mik_ip'];
+            }
+            
+            if (!empty($adminMobile)) {
+                $msg = "আপনার সফটওয়্যার থেকে  {$mikrotikIP} ডিজেবল আছে। এজন্যে এই  ip  এর কাস্টমার গুলো ডিসকানেক্ট  হয়নি।";
+                $message = "$msg";
+                // echo $message;
+                $obj->sendsms($adminMobile, $message);
+            }
+        }
+    }
+    
+    // echo "Total Disconnected Users: " . $disconnectCount;
+    if($disconnectCount > 0){
+        $total_dis = "আজকে  {$disconnectCount} জন কাস্টমারের লাইন অফ হইসে ।";
+        $totaldis_msg = "$total_dis";
+        // echo $totaldis_msg;
+        $obj->sendsms($adminMobile, $totaldis_msg);
+    }
+}
+
+
+
+
+$smsInfo = $obj->rawSqlSingle("SELECT * FROM sms WHERE status = '6'");
+
+if (isset($smsInfo['smshead']) && $smsInfo['smshead'] == 'active') {
+
+    $smsArray = [];
+    $smsI = 0;
+    // $allcustomerforsms = $obj->raw_sql("SELECT * FROM tbl_agent WHERE ag_status = '1' AND bill_status= '0' AND deleted_at IS NULL AND mikrotik_disconnect = $day ORDER BY ag_id ASC");
+
+    $allcustomerforsms = $obj->raw_sql(
+        "SELECT * 
+        FROM tbl_agent
+        LEFT JOIN customer_billing ON tbl_agent.ag_id = customer_billing.agid
+        WHERE tbl_agent.ag_status = '1' 
+          AND tbl_agent.bill_status = '0' 
+          AND tbl_agent.deleted_at IS NULL
+          AND customer_billing.dueadvance > 0
+          AND tbl_agent.mikrotik_disconnect IN (DAY(CURDATE() + INTERVAL '$cronSmsDay' DAY))
+        ORDER BY ag_id ASC"
+    );
+
+    foreach ($allcustomerforsms as $agent) {
+        $sms_b = isset($smsInfo['smsbody']) ? $smsInfo['smsbody'] : NULL;
+        $ip = $agent['ip'];
+        $cid = $agent['cus_id'];
+        $mobile =  $agent['ag_mobile_no'];
+        //  echo $mobile.'<br>';
+
+        $totalDueAmount = $obj->rawSqlSingle("SELECT dueadvance FROM customer_billing WHERE agid = '$agent[ag_id]'")['dueadvance'];
+
+        $var_replacement = [
+            '{CUSTOMER_NAME}' => $agent['ag_name'],
+            '{DUE_AMOUNT}' => $totalDueAmount,
+            '{CUSTOMER_ID}' => $agent['cus_id'],
+            '{IP_ADDRESS}' => $agent['ip'],
+            // '{PACKAGE_NAME}' => $agent['mb'],
+            '{PACKAGE_NAME}' =>  $obj->rawSqlSingle("SELECT package_name FROM tbl_package WHERE net_speed = '$agent[mb]'")['package_name'],
+            '{MONTHLY_BILL}' => $agent['taka'],
+        ];
+
+        $sms_b = strtr($sms_b, $var_replacement);
+        $mass = "$sms_b";
+
+        if ($mobile) {
+            // $mobilenum=$mobile;
+            $mobilenum = "88" . $mobile;
+            $smsArray[$smsI++] = ["to" => $mobilenum, "message" => $mass];
+        }
+    }
+
+    $obj->sms_send($smsArray);
+}
+
+?>

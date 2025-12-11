@@ -1,0 +1,62 @@
+[19-Oct-2025 18:45:21 Asia/Dhaka] PHP Warning:  Undefined variable $conn in /home/robotisp/dev.robotisp.com/pages/setting/index.php on line 102
+[19-Oct-2025 18:45:21 Asia/Dhaka] PHP Fatal error:  Uncaught Error: Call to a member function query() on null in /home/robotisp/dev.robotisp.com/pages/setting/index.php:102
+Stack trace:
+#0 /home/robotisp/dev.robotisp.com/partials/route.php(9): include()
+#1 /home/robotisp/dev.robotisp.com/index.php(189): include('/home/robotisp/...')
+#2 {main}
+  thrown in /home/robotisp/dev.robotisp.com/pages/setting/index.php on line 102
+[19-Oct-2025 18:45:50 Asia/Dhaka] PHP Warning:  Undefined variable $conn in /home/robotisp/dev.robotisp.com/pages/setting/index.php on line 102
+[19-Oct-2025 18:45:50 Asia/Dhaka] PHP Fatal error:  Uncaught Error: Call to a member function query() on null in /home/robotisp/dev.robotisp.com/pages/setting/index.php:102
+Stack trace:
+#0 /home/robotisp/dev.robotisp.com/partials/route.php(9): include()
+#1 /home/robotisp/dev.robotisp.com/index.php(189): include('/home/robotisp/...')
+#2 {main}
+  thrown in /home/robotisp/dev.robotisp.com/pages/setting/index.php on line 102
+[20-Oct-2025 11:46:01 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/disconnect_by_due_cus.php on line 29
+[20-Oct-2025 11:46:01 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/disconnect_by_due_cus.php on line 29
+[20-Oct-2025 11:46:01 Asia/Dhaka] PHP Warning:  Undefined variable $mik_id in /home/robotisp/dev.robotisp.com/pages/mikrotik/disconnect_by_due_cus.php on line 142
+[20-Oct-2025 11:50:53 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 11:50:53 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 11:51:20 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 11:51:20 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 11:59:35 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 11:59:35 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:00:15 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:00:15 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:00:41 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:00:41 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:01:02 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:01:02 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:01:51 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:01:51 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:05:00 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:05:00 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:06:27 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:06:27 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:44:31 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:44:31 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:47:30 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:47:30 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:47:40 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:47:40 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:15 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:15 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:27 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:27 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:46 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:50:46 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:51:26 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:51:26 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:56:47 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:56:47 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:57:16 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:57:16 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:58:28 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 12:58:28 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 14:35:15 Asia/Dhaka] PHP Warning:  Undefined array key "notice_info" in /home/robotisp/dev.robotisp.com/notice.php on line 20
+[20-Oct-2025 15:17:16 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 15:17:16 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 15:18:16 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 15:18:16 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 15:28:09 Asia/Dhaka] PHP Warning:  Undefined variable $bzones in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
+[20-Oct-2025 15:28:09 Asia/Dhaka] PHP Warning:  foreach() argument must be of type array|object, null given in /home/robotisp/dev.robotisp.com/pages/mikrotik/all_secret_list.php on line 65
