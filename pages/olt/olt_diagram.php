@@ -384,17 +384,42 @@ foreach($onuData as $idx => $onu){
 
 // Build EPON tree dynamically
 $eponTree = [];
+
 foreach($onuData as $onu){
-    $name = $onu['descr'] ?? '';
+    $name   = trim($onu['descr'] ?? '');
     $status = $onu['status'] ?? 'Unknown';
 
-    if(preg_match('/^EPON0\/(\d+):(\d+)$/', $name, $m)){
-        $port = "EPON0/".$m[1];
-        $eponTree[$port]['onus'][] = ['name'=>$name, 'status'=>$status];
-    } elseif(preg_match('/^EPON0\/(\d+)$/', $name)){
-        $eponTree[$name]['onus'] = $eponTree[$name]['onus'] ?? [];
+    // ---- 4-port VSOL (EPON0/1:1)
+    if (preg_match('/^(EPON\d+\/\d+):(\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'][] = [
+            'name'   => $name,
+            'status' => $status
+        ];
+    }
+
+    // ---- 4-port VSOL port only (EPON0/1)
+    elseif (preg_match('/^(EPON\d+\/\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
+    }
+
+    // ---- 8-port VSOL ONU (EPON01ONU12 xxx)
+    elseif (preg_match('/^(EPON\d+)ONU(\d+)/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'][] = [
+            'name'   => $name,
+            'status' => $status
+        ];
+    }
+
+    // ---- 8-port VSOL port only (EPON01)
+    elseif (preg_match('/^(EPON\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
     }
 }
+
 
 // Prepare Highcharts links & node colors
 $links = [];

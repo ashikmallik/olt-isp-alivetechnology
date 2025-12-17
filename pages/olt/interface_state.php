@@ -683,15 +683,29 @@ foreach ($uptimeLines as $line) {
 }
 
 // --- Filter only ONUs (EPONx/x:x)
-$onuPorts = array_filter($interfaceData, fn($d) =>
-    isset($d['name']) && preg_match('/^EPON\d+\/\d+:\d+$/', $d['name'])
-);
+$onuPorts = array_filter($interfaceData, function ($d) {
+    if (!isset($d['name'])) return false;
+
+    return preg_match('/^EPON\d+\/\d+:\d+$/i', $d['name'])   // 4-port
+        || preg_match('/^EPON\d+ONU\d+/i', $d['name']);    // 8-port
+});
 
 // --- Sort ONUs by EPON port ---
 uasort($onuPorts, function ($a, $b) {
-    preg_match('/EPON(\d+)\/(\d+):(\d+)/', $a['name'], $x);
-    preg_match('/EPON(\d+)\/(\d+):(\d+)/', $b['name'], $y);
-    return [$x[1], $x[2], $x[3]] <=> [$y[1], $y[2], $y[3]];
+
+    // 4-port format
+    if (preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $a['name'], $x) &&
+        preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $b['name'], $y)) {
+        return [$x[1], $x[2], $x[3]] <=> [$y[1], $y[2], $y[3]];
+    }
+
+    // 8-port format
+    if (preg_match('/EPON(\d+)ONU(\d+)/i', $a['name'], $x) &&
+        preg_match('/EPON(\d+)ONU(\d+)/i', $b['name'], $y)) {
+        return [$x[1], $x[2]] <=> [$y[1], $y[2]];
+    }
+
+    return strcmp($a['name'], $b['name']);
 });
 
 // --- MAC Address Mapping ---
