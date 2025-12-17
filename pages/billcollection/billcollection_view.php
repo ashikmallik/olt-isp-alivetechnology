@@ -201,6 +201,7 @@
                         <th scope="col">Previous Due</th>
                         <!--<th scope="col">Bill Date</th>-->
                         <th scope="col">Disconn. Date</th>
+                        <th scope="col">Expire Time</th>
                         <th scope="col">Zone</th>
                         <th scope="col">B.Person</th>
                         <th scope="col">Status</th>
@@ -208,6 +209,16 @@
                 </thead>
                 <tbody>
                 </tbody>
+
+                <tfoot>
+                    <tr>
+                    <th colspan="8" class="text-end">Page Total:</th>
+                    <th id="ft_monthly"></th>  
+                    <th id="ft_total_due"></th>
+                    <th id="ft_prev_due"></th>  
+                    <th colspan="5"></th>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
@@ -344,10 +355,9 @@
                     data: 'ag_id',
                     render: function(data, type, row) {
                         return `<a href="pages/pdf/invoice.php?token=` + data + `" target="_blank">
-                    <button class="btn btn-secondary waves-effect waves-light btn-sm"><i class="fas fa-print"></i></button></a>
+                        <button class="btn btn-secondary waves-effect waves-light btn-sm"><i class="fas fa-print"></i></button></a>
                         <button class='btn btn-success waves-effect waves-light btn-sm' data-name='` + row['ag_name'] + `'  data-id='` + row['ag_id'] + `' data-due='` + row['dueadvance'] + `' onclick="openPaymentModal(this)">Pay</button>
-                        
-`;
+                        `;
                     }
                 },
                 {
@@ -406,14 +416,37 @@
                         }
                     }
                 },
-                // {
-                //     data: 'bill_date',
-                //     orderable: true
-                // },
                 {
                     data: 'mikrotik_disconnect',
                     orderable: true
                 },
+                {
+                    data: 'mikrotik_disconnect',
+                    orderable: false,
+                    render: function(data, type, row) {
+                        if (!data) return '<span class="text-muted">N/A</span>';
+                
+                        // present date
+                        let today = new Date();
+                        let todayDay = today.getDate(); // Todays number
+                
+                        // Get date to days
+                        let disconnectDay = parseInt(data);
+                
+                        // if day invalid 
+                        if (isNaN(disconnectDay)) return '<span class="text-muted">Invalid</span>';
+    
+                        let lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+            
+                        if (disconnectDay <= todayDay) {
+                            return '<span class="text-danger fw-semibold">Expired</span>';
+                        }
+                        let diffDays = disconnectDay - todayDay;
+                        return `<span class="text-success fw-semibold">${diffDays} days left</span>`;
+                    }
+                }
+
+                ,
                 {
                     data: 'zone_name',
                     orderable: true,
@@ -440,23 +473,59 @@
                     }
                 },
             ],
-            buttons: [{
-                    extend: "copy",
-                    className: "btn-light"
-                },
+            buttons: [
+                { extend: "copy", className: "btn-light" },
+
                 {
                     extend: "print",
-                    className: "btn-light"
+                    className: "btn-light",
+                    exportOptions: {
+                    columns: [0,2,3,4,6,7,8,9,10,11,12,13]
+                    },
+                    action: function (e, dt, button, config) {
+                    exportTotals = calcPageTotals(dt); // 
+                    $.fn.dataTable.ext.buttons.print.action.call(this, e, dt, button, config);
+                    },
+                    customize: function (win) {
+                    const summaryHtml = `
+                        <div style="margin-top:10px; font-size:12px;">
+                        <b>Page Summary:</b>
+                        Monthly Bill Total: <b>${exportTotals.monthly.toFixed(2)}</b> |
+                        Total Due: <b>${exportTotals.due.toFixed(2)}</b> |
+                        Previous Due: <b>${exportTotals.prev.toFixed(2)}</b>
+                        </div>
+                    `;
+                    $(win.document.body).append(summaryHtml);
+                    }
                 },
+
                 {
-                    extend: "pdf",
-                    className: "btn-light"
+                    extend: "pdfHtml5",
+                    className: "btn-light",
+                    exportOptions: {
+                    columns: [0,2,3,4,6,7,8,9,10,11,12,13]
+                    },
+                    orientation: "landscape",
+                    pageSize: "A4",
+                    action: function (e, dt, button, config) {
+                    exportTotals = calcPageTotals(dt); 
+                    $.fn.dataTable.ext.buttons.pdfHtml5.action.call(this, e, dt, button, config);
+                    },
+                    customize: function (doc) {
+                    doc.content.push({
+                        margin: [0, 10, 0, 0],
+                        fontSize: 10,
+                        text:
+                        `Page Summary: Monthly Bill Total: ${exportTotals.monthly.toFixed(2)} | ` +
+                        `Total Due: ${exportTotals.due.toFixed(2)} | ` +
+                        `Previous Due: ${exportTotals.prev.toFixed(2)}`
+                    });
+                    }
                 },
-                {
-                    extend: 'excel',
-                    className: 'btn btn-success btn-sm'
-                },
+
+                { extend: "excel", className: "btn btn-success btn-sm" }
             ],
+
             language: {
                 search: "_INPUT_",
                 searchPlaceholder: "Search customers...",
@@ -467,6 +536,38 @@
                 $(".dataTables_paginate > .pagination").addClass("pagination-rounded");
             },
             lengthMenu: [10, 25, 50, 100, 500],
+
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api();
+
+                // numeric convert helper
+                const toNumber = (val) => {
+                    if (val === null || val === undefined) return 0;
+                    return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
+                };
+
+                const colMonthlyBill = 8;  
+                const colTotalDue    = 9; 
+                const colPrevDue     = 10;
+
+                // current page sum
+                const pageMonthly = api.column(colMonthlyBill, { page: 'current' }).data()
+                    .reduce((a, b) => toNumber(a) + toNumber(b), 0);
+
+                const pageDue = api.column(colTotalDue, { page: 'current' }).data()
+                    .reduce((a, b) => toNumber(a) + toNumber(b), 0);
+                let pagePrev = 0;
+                api.rows({ page: 'current' }).data().each(function (row) {
+                    let totalDue = toNumber(row.dueadvance);
+                    let monthly  = toNumber(row.taka);
+                    pagePrev += (totalDue > monthly) ? (totalDue - monthly) : 0;
+                });
+
+                $('#ft_monthly').html(pageMonthly.toFixed(2));
+                $('#ft_total_due').html(pageDue.toFixed(2));
+                $('#ft_prev_due').html(pagePrev.toFixed(2));
+            },
+            
             order: [
                 [1, 'asc']
             ], // Order by 'cus_id', adjust as needed
@@ -517,7 +618,6 @@
                 }
             });
         });
-
     });
 </script>
 <script>
@@ -580,7 +680,7 @@
             type: 'POST',
             data: formData,
             success: function(response) {
-                console.log(response);
+                // console.log(response); 
 
                 if (response.success) {
                     document.getElementById('submit-btn').innerText = 'Completed';
@@ -629,6 +729,12 @@
 </script>
 
 <script>
+    
+    // Get the Static Month Names
+    function getMonth(){
+        return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    }
+
     $(document).ready(function() {
         // Add event listener for the button click
         $('#graphicalViewButton').click(function() {
@@ -692,7 +798,10 @@
     });
 
 
+
     let bill_collection_comparison_chart = null;
+
+
 
     function bill_collection_view_line_chart(previousData, previousYear, currentData, currentYear, maxData) {
         // Define colors
@@ -701,9 +810,6 @@
         if (dataColors) {
             colors = dataColors.split(",");
         }
-
-        // Static month names for both years
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
         // Convert the comma-separated strings to arrays of numbers
         const previousDataArray = previousData.split(',').map(Number);
@@ -752,7 +858,7 @@
                 size: 6
             },
             xaxis: {
-                categories: months, // Use static month names
+                categories: getMonth(), // Use static month names
                 title: {
                     text: "Month"
                 }
@@ -808,7 +914,7 @@
 
     function bill_collection_view_column_chart(collectionData, expenseData, collection, expense, maxData) {
         // Static month names for both years
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 
         // Convert the comma-separated strings to arrays of numbers
         const collectionDataArray = collectionData.split(',').map(Number);
@@ -842,7 +948,7 @@
                 colors: ['transparent']
             },
             xaxis: {
-                categories: months,
+                categories: getMonth(),
             },
             yaxis: {
                 title: {
@@ -872,6 +978,39 @@
             incomeExpenseChart.render();
         }
     }
+
+
+
+    let exportTotals = { monthly: 0, due: 0, prev: 0 };
+
+    function calcPageTotals(dt) {
+        const api = dt; 
+
+        const toNumber = (v) => parseFloat(String(v ?? 0).replace(/[^0-9.-]/g, "")) || 0;
+
+        const colMonthlyBill = 8;
+        const colTotalDue    = 9; 
+
+        const monthly = api.column(colMonthlyBill, { page: 'current' }).data()
+            .reduce((a, b) => toNumber(a) + toNumber(b), 0);
+
+        const due = api.column(colTotalDue, { page: 'current' }).data()
+            .reduce((a, b) => toNumber(a) + toNumber(b), 0);
+
+        let prev = 0;
+        api.rows({ page: 'current' }).data().each(function (row) {
+            const totalDue = toNumber(row.dueadvance);
+            const m = toNumber(row.taka);
+            prev += (totalDue > m) ? (totalDue - m) : 0;
+        });
+
+        return { monthly, due, prev };
+    }
+
+
+
+
+
 </script>
 
 
