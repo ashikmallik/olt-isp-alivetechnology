@@ -396,16 +396,16 @@ foreach ($onuData as $onu) {
     }
 
     // MATCH: EPON01ONU12
-    if (preg_match('/^(EPON\d+)ONU(\d+)$/i', $name, $m)) {
+    if (preg_match('/^(EPON\d+\/\d+):(\d+)$/i', $name, $m)) {
 
-        $port = $m[1];   // EPON01
-        $onuNo = $m[2];  // ONU number
+    $port  = $m[1];   // EPON0/1
+    $onuNo = $m[2];   // ONU number
 
-        $eponTree[$port]['onus'][] = [
-            'name'   => $name,
-            'status' => $status
-        ];
-    }
+    $eponTree[$port]['onus'][] = [
+        'name'   => $name,
+        'status' => $status
+    ];
+}
 }
 
 

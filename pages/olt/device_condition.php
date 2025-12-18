@@ -393,9 +393,11 @@ $linesDist = snmpWalkLines($oltIp, $community, $oidDistance);
     $lines = snmpWalkLines($community, $oltIp, $oids['rx_power']);
 
     foreach ($lines as $line) {
-        if (preg_match('/\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
-            $onuId = (int)$m[1];
-            $rxPowers[$onuId] = $m[2];
+        // match: .PON.ONU = STRING
+        if (preg_match('/\.(\d+)\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
+            $pon   = $m[1];
+            $onuNo = $m[2];
+            $rxPowers["$pon:$onuNo"] = $m[3];
         }
     }
 
@@ -404,9 +406,10 @@ $linesDist = snmpWalkLines($oltIp, $community, $oidDistance);
     $lines = snmpWalkLines($community, $oltIp, $oids['tx_power']);
 
     foreach ($lines as $line) {
-        if (preg_match('/\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
-            $onuId = (int)$m[1];
-            $txPowers[$onuId] = $m[2];
+        if (preg_match('/\.(\d+)\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
+            $pon   = $m[1];
+            $onuNo = $m[2];
+            $txPowers["$pon:$onuNo"] = $m[3];
         }
     }
 
