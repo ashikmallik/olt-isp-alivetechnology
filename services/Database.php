@@ -3,9 +3,12 @@ class Database
 {
     protected $connect;  // Change to protected so subclasses can access it
     private $host = "localhost";
-    private $user = "bsd";
-    private $db = "alivetechnology";
-    private $pass = "Bsd@2025";
+    // private $user = "bsd";
+    // private $db = "alivetechnology";
+    // private $pass = "Bsd@2025";
+     private $user = "root";
+    private $db = "newisp";
+    private $pass = "";
 
     public function __construct()
     {

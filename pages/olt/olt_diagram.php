@@ -385,38 +385,26 @@ foreach($onuData as $idx => $onu){
 // Build EPON tree dynamically
 $eponTree = [];
 
-foreach($onuData as $onu){
+foreach ($onuData as $onu) {
+
     $name   = trim($onu['descr'] ?? '');
     $status = $onu['status'] ?? 'Unknown';
 
-    // ---- 4-port VSOL (EPON0/1:1)
-    if (preg_match('/^(EPON\d+\/\d+):(\d+)$/i', $name, $m)) {
-        $port = $m[1];
+    // blank, vlan, uplink skip
+    if ($name == '' || stripos($name, 'vlan') !== false || stripos($name, 'uplink') !== false) {
+        continue;
+    }
+
+    // MATCH: EPON01ONU12
+    if (preg_match('/^(EPON\d+)ONU(\d+)$/i', $name, $m)) {
+
+        $port = $m[1];   // EPON01
+        $onuNo = $m[2];  // ONU number
+
         $eponTree[$port]['onus'][] = [
             'name'   => $name,
             'status' => $status
         ];
-    }
-
-    // ---- 4-port VSOL port only (EPON0/1)
-    elseif (preg_match('/^(EPON\d+\/\d+)$/i', $name, $m)) {
-        $port = $m[1];
-        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
-    }
-
-    // ---- 8-port VSOL ONU (EPON01ONU12 xxx)
-    elseif (preg_match('/^(EPON\d+)ONU(\d+)/i', $name, $m)) {
-        $port = $m[1];
-        $eponTree[$port]['onus'][] = [
-            'name'   => $name,
-            'status' => $status
-        ];
-    }
-
-    // ---- 8-port VSOL port only (EPON01)
-    elseif (preg_match('/^(EPON\d+)$/i', $name, $m)) {
-        $port = $m[1];
-        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
     }
 }
 
@@ -424,24 +412,30 @@ foreach($onuData as $onu){
 // Prepare Highcharts links & node colors
 $links = [];
 $nodesColor = [];
-foreach($eponTree as $port=>$data){
+
+$links[] = ['OLT', 'OLT'];
+$nodesColor['OLT'] = '#000';
+
+foreach ($eponTree as $port => $data) {
+
     $links[] = ['OLT', $port];
     $nodesColor[$port] = '#007bff';
 
-    foreach($data['onus'] ?? [] as $onu){
+    foreach ($data['onus'] as $onu) {
+
         $links[] = [$port, $onu['name']];
-        $color = match(strtolower($onu['status'])){
+
+        $nodesColor[$onu['name']] = match (strtolower($onu['status'])) {
             'connected' => 'green',
-            'down' => 'red',
-            default => 'orange'
+            'down'      => 'red',
+            default     => 'orange'
         };
-        $nodesColor[$onu['name']] = $color;
     }
 }
-$nodesColor['OLT'] = '#000000';
 
 // Optional debug (you can comment out later)
 // echo "<pre>"; print_r($onuData); echo "</pre>";
+// exit;
 ?>
 
 <div id="container" style="height: 600px;"></div>

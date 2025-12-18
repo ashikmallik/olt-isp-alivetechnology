@@ -646,7 +646,7 @@ $interfaceData = [];
 foreach ($descrLines as $line) {
     if (preg_match('/\.(\d+) = STRING: (.+)/', $line, $m)) {
         $interfaceData[$m[1]] = [
-            'name' => trim($m[2], '"')
+            'name' => isset($m[2]) ? trim((string)$m[2], '"') : ''
         ];
     }
 }
@@ -684,10 +684,14 @@ foreach ($uptimeLines as $line) {
 
 // --- Filter only ONUs (EPONx/x:x)
 $onuPorts = array_filter($interfaceData, function ($d) {
-    if (!isset($d['name'])) return false;
+    if (empty($d['name']) || !is_string($d['name'])) {
+        return false;
+    }
 
-    return preg_match('/^EPON\d+\/\d+:\d+$/i', $d['name'])   // 4-port
-        || preg_match('/^EPON\d+ONU\d+/i', $d['name']);    // 8-port
+    $name = trim($d['name']);
+
+    return preg_match('/^EPON\d+\/\d+:\d+$/i', $name)   // 4-port
+        || preg_match('/^EPON\d+ONU\d+/i', $name);     // 8-port
 });
 
 // --- Sort ONUs by EPON port ---
