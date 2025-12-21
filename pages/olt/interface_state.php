@@ -646,7 +646,7 @@ $interfaceData = [];
 foreach ($descrLines as $line) {
     if (preg_match('/\.(\d+) = STRING: (.+)/', $line, $m)) {
         $interfaceData[$m[1]] = [
-            'name' => isset($m[2]) ? trim((string)$m[2], '"') : ''
+            'name' => trim($m[2], '"')
         ];
     }
 }
@@ -684,14 +684,10 @@ foreach ($uptimeLines as $line) {
 
 // --- Filter only ONUs (EPONx/x:x)
 $onuPorts = array_filter($interfaceData, function ($d) {
-    if (empty($d['name']) || !is_string($d['name'])) {
-        return false;
-    }
+    if (!isset($d['name'])) return false;
 
-    $name = trim($d['name']);
-
-    return preg_match('/^EPON\d+\/\d+:\d+$/i', $name)   // 4-port
-        || preg_match('/^EPON\d+ONU\d+/i', $name);     // 8-port
+    return preg_match('/^EPON\d+\/\d+:\d+$/i', $d['name'])   // 4-port
+        || preg_match('/^EPON\d+ONU\d+/i', $d['name']);    // 8-port
 });
 
 // --- Sort ONUs by EPON port ---
@@ -945,8 +941,7 @@ foreach ($linesRx as $line) {
                             <th>Description</th>
                             <th>Status</th>
                             <th>MAC</th>
-                            <th>TX Power</th>
-                            <th>RX Power</th>
+                            
                         </tr>
                     </thead>
                     <tbody>
@@ -1004,8 +999,7 @@ foreach ($linesRx as $line) {
                                 </td>
 
                                 <td><code><?= $d['mac'] ?? '-' ?></code></td>
-                                <td><?= isset($d['tx']) ? $d['tx'].' dBm' : '-' ?></td>
-                                <td><?= isset($d['rx']) ? $d['rx'].' dBm' : '-' ?></td>
+                                
                             </tr>
                         <?php endforeach; ?>
 

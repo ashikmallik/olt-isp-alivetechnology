@@ -355,11 +355,10 @@ $linesDist = snmpWalkLines($oltIp, $community, $oidDistance);
 
     // Function to run snmpbulkwalk
     function snmpWalkLines($community, $oltIp, $oid) {
-    $cmd = "snmpbulkwalk -v2c -c $community $oltIp $oid";
-    $output = shell_exec($cmd);
-    $output = $output ?? '';   // যদি null হয়, empty string assign
-    return explode("\n", trim($output));
-}
+        $cmd = "snmpbulkwalk -v2c -c $community $oltIp $oid";
+        $output = shell_exec($cmd);
+        return explode("\n", trim($output));
+    }
 
     // Step 1: Fetch interface names
     $interfaces = [];
@@ -391,25 +390,22 @@ $linesDist = snmpWalkLines($oltIp, $community, $oidDistance);
     // Step 4: Fetch RX power
     $rxPowers = [];
     $lines = snmpWalkLines($community, $oltIp, $oids['rx_power']);
-
     foreach ($lines as $line) {
-        // match: .PON.ONU = STRING
-        if (preg_match('/\.(\d+)\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
-            $pon   = $m[1];
-            $onuNo = $m[2];
-            $rxPowers["$pon:$onuNo"] = $m[3];
+        if (preg_match('/(\d+)\.(\d+) = STRING: "?(.+?)"?$/', $line, $matches)) {
+            $ponPort = $matches[1];
+            $onuNo   = $matches[2];
+            $rxPowers["$ponPort:$onuNo"] = $matches[3]; // e.g., "0.00 mW (-27.96 dBm)"
         }
     }
 
     // Step 5: Fetch TX power
     $txPowers = [];
     $lines = snmpWalkLines($community, $oltIp, $oids['tx_power']);
-
     foreach ($lines as $line) {
-        if (preg_match('/\.(\d+)\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
-            $pon   = $m[1];
-            $onuNo = $m[2];
-            $txPowers["$pon:$onuNo"] = $m[3];
+        if (preg_match('/(\d+)\.(\d+) = STRING: "?(.+?)"?$/', $line, $matches)) {
+            $ponPort = $matches[1];
+            $onuNo   = $matches[2];
+            $txPowers["$ponPort:$onuNo"] = $matches[3]; // e.g., "0.00 mW (-3.00 dBm)"
         }
     }
 
@@ -433,18 +429,18 @@ foreach ($interfaces as $ifIndex => $name) {
     }
 
     // ---- 8-port VSOL ONU (EPON01ONU12)
-   elseif (preg_match('/^EPON0?(\d+)ONU(\d+)$/i', $name, $m)) {
-
-    $onuNo = (int)$m[2]; // ONU ID
-
-    $onuPorts[] = [
-        'name'           => $name,
-        'download_bytes' => $downloads[$ifIndex] ?? null,
-        'upload_bytes'   => $uploads[$ifIndex] ?? null,
-        'rx_power'       => $rxPowers[$onuNo] ?? null,
-        'tx_power'       => $txPowers[$onuNo] ?? null,
-    ];
-}
+    elseif (preg_match('/^EPON0?(\d+)ONU(\d+)$/i', $name, $m)) {
+        $ponPort = ltrim($m[1], '0'); // leading zero remove
+        $onuNo   = $m[2];
+        $key     = "$ponPort:$onuNo"; // match SNMP key format
+        $onuPorts[] = [
+            'name'           => $name,
+            'download_bytes' => $downloads[$ifIndex] ?? null,
+            'upload_bytes'   => $uploads[$ifIndex] ?? null,
+            'rx_power'       => $rxPowers[$key] ?? null,
+            'tx_power'       => $txPowers[$key] ?? null,
+        ];
+    }
 }
 
 // Step 7: Sort EPON interfaces logically
@@ -502,6 +498,9 @@ uasort($onuPorts, function ($a, $b) {
 
 <?php
 }
+
+
+
 
 else{
     echo "Invalid vendor";

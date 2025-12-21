@@ -385,57 +385,63 @@ foreach($onuData as $idx => $onu){
 // Build EPON tree dynamically
 $eponTree = [];
 
-foreach ($onuData as $onu) {
-
+foreach($onuData as $onu){
     $name   = trim($onu['descr'] ?? '');
     $status = $onu['status'] ?? 'Unknown';
 
-    // blank, vlan, uplink skip
-    if ($name == '' || stripos($name, 'vlan') !== false || stripos($name, 'uplink') !== false) {
-        continue;
+    // ---- 4-port VSOL (EPON0/1:1)
+    if (preg_match('/^(EPON\d+\/\d+):(\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'][] = [
+            'name'   => $name,
+            'status' => $status
+        ];
     }
 
-    // MATCH: EPON01ONU12
-    if (preg_match('/^(EPON\d+\/\d+):(\d+)$/i', $name, $m)) {
+    // ---- 4-port VSOL port only (EPON0/1)
+    elseif (preg_match('/^(EPON\d+\/\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
+    }
 
-    $port  = $m[1];   // EPON0/1
-    $onuNo = $m[2];   // ONU number
+    // ---- 8-port VSOL ONU (EPON01ONU12 xxx)
+    elseif (preg_match('/^(EPON\d+)ONU(\d+)/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'][] = [
+            'name'   => $name,
+            'status' => $status
+        ];
+    }
 
-    $eponTree[$port]['onus'][] = [
-        'name'   => $name,
-        'status' => $status
-    ];
-}
+    // ---- 8-port VSOL port only (EPON01)
+    elseif (preg_match('/^(EPON\d+)$/i', $name, $m)) {
+        $port = $m[1];
+        $eponTree[$port]['onus'] = $eponTree[$port]['onus'] ?? [];
+    }
 }
 
 
 // Prepare Highcharts links & node colors
 $links = [];
 $nodesColor = [];
-
-$links[] = ['OLT', 'OLT'];
-$nodesColor['OLT'] = '#000';
-
-foreach ($eponTree as $port => $data) {
-
+foreach($eponTree as $port=>$data){
     $links[] = ['OLT', $port];
     $nodesColor[$port] = '#007bff';
 
-    foreach ($data['onus'] as $onu) {
-
+    foreach($data['onus'] ?? [] as $onu){
         $links[] = [$port, $onu['name']];
-
-        $nodesColor[$onu['name']] = match (strtolower($onu['status'])) {
+        $color = match(strtolower($onu['status'])){
             'connected' => 'green',
-            'down'      => 'red',
-            default     => 'orange'
+            'down' => 'red',
+            default => 'orange'
         };
+        $nodesColor[$onu['name']] = $color;
     }
 }
+$nodesColor['OLT'] = '#000000';
 
 // Optional debug (you can comment out later)
 // echo "<pre>"; print_r($onuData); echo "</pre>";
-// exit;
 ?>
 
 <div id="container" style="height: 600px;"></div>
@@ -469,6 +475,109 @@ Highcharts.chart('container', {
 </script>
 <?php
 
+}elseif($vendor == 5){
+$oltIp = $ip;
+$community = $community;
+
+$oids = [
+    'descr' => "1.3.6.1.2.1.2.2.1.2",
+    'oper_status' => "1.3.6.1.2.1.2.2.1.8"
+];
+
+// SNMP fetch function
+function snmpBulkFetch($community, $oltIp, $oids){
+    $data = [];
+    foreach($oids as $key=>$oid){
+        $lines = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oid 2>&1")));
+        foreach($lines as $line){
+            if(preg_match('/\.(\d+)\s*=\s*(?:STRING|INTEGER):\s*"?(.+?)"?$/', $line, $m)){
+                $index = $m[1];
+                $value = $m[2];
+                $data[$index][$key] = $value;
+            }
+        }
+    }
+    return $data;
+}
+
+// Fetch all SNMP data
+$onuData = snmpBulkFetch($community, $oltIp, $oids);
+
+// Map SNMP oper_status to readable
+$statusMap = [1=>'Connected', 2=>'Down', 3=>'Testing',4=>'Unknown',5=>'Dormant',6=>'Not Present',7=>'Lower Layer Down'];
+foreach($onuData as $idx=>$onu){
+    $onuData[$idx]['status'] = $statusMap[$onu['oper_status'] ?? 0] ?? 'Unknown';
+}
+
+// Build GPON tree dynamically
+$gponTree = [];
+foreach($onuData as $onu){
+    $name = $onu['descr'] ?? '';
+    $status = $onu['status'] ?? 'Unknown';
+
+    // Match ONU01/02
+    if (preg_match('/^ONU(\d+)\/(\d+)$/', $name, $m)) {
+        $pon = "PON" . $m[1];     // PON01
+        $onuName = "ONU" . $m[1] . "/" . $m[2]; // ONU01/02
+
+        $gponTree[$pon]['onus'][] = [
+            'name' => $onuName,
+            'status' => $status
+        ];
+    }
+}
+
+// Prepare Highcharts links & node colors
+$links = [];
+$nodesColor = [];
+foreach($gponTree as $port=>$data){
+    $links[] = ['OLT', $port];
+    $nodesColor[$port] = '#007bff';
+
+    foreach($data['onus'] ?? [] as $onu){
+        $links[] = [$port, $onu['name']];
+        $color = match(strtolower($onu['status'])){
+            'connected'=>'green',
+            'down'=>'red',
+            default=>'orange'
+        };
+        $nodesColor[$onu['name']] = $color;
+    }
+}
+$nodesColor['OLT'] = '#000000';
+?>
+
+<div id="container" style="height: 600px;"></div>
+
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/networkgraph.js"></script>
+
+<script>
+Highcharts.chart('container', {
+    chart: { type: 'networkgraph', marginTop: 80 },
+    title: { text: 'OLT → GPON → ONU Network Diagram (Dynamic SNMP)' },
+    plotOptions: {
+        networkgraph: {
+            keys: ['from', 'to'],
+            layoutAlgorithm: { enableSimulation: false, integration: 'verlet', linkLength: 100 }
+        }
+    },
+    series: [{
+        marker: { radius: 10 },
+        dataLabels: { enabled: true },
+        data: <?php echo json_encode($links); ?>,
+        nodes: <?php
+            $nodes = [];
+            foreach($nodesColor as $id=>$color){
+                $nodes[] = ['id'=>$id, 'color'=>$color];
+            }
+            echo json_encode($nodes);
+        ?>
+    }]
+});
+</script>
+
+<?php
 }elseif($vendor == 5){
 $oltIp = $ip;
 $community = $community;
