@@ -108,6 +108,9 @@ $devices = $obj->view_all('tbl_olt_devices');
                                 }elseif ($device['vendor_id'] == 5) {
                                     echo 'Ecom';
                                 }
+                                elseif ($device['vendor_id'] == 6) {
+                                    echo 'TVS Poton (EPON)';
+                                }
                                  else {
                                     echo 'Unknown Vendor';
                                 }
@@ -183,6 +186,7 @@ $devices = $obj->view_all('tbl_olt_devices');
                             <option value="3">DBC (EPON)</option>
                             <option value="4">V-SOL (EPON)</option>
                             <option value="5">Ecom</option>
+                            <option value="6">TVS Poton (EPON)</option>
                         </select>
                     </div>
                     <div class="mb-3">

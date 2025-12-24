@@ -475,76 +475,106 @@ Highcharts.chart('container', {
 </script>
 <?php
 
-}elseif($vendor == 5){
-$oltIp = $ip;
-$community = $community;
+}elseif ($vendor == 5) {
 
-$oids = [
-    'descr' => "1.3.6.1.2.1.2.2.1.2",
-    'oper_status' => "1.3.6.1.2.1.2.2.1.8"
-];
+    $oltIp     = $ip;
+    $community = $community;
 
-// SNMP fetch function
-function snmpBulkFetch($community, $oltIp, $oids){
-    $data = [];
-    foreach($oids as $key=>$oid){
-        $lines = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oid 2>&1")));
-        foreach($lines as $line){
-            if(preg_match('/\.(\d+)\s*=\s*(?:STRING|INTEGER):\s*"?(.+?)"?$/', $line, $m)){
-                $index = $m[1];
-                $value = $m[2];
-                $data[$index][$key] = $value;
+    /* =========================
+       ECOM EPON OIDs (Tested for Diagram)
+    ==========================*/
+    $oidMac    = "1.3.6.1.4.1.17409.2.3.4.1.1.7";  // MAC (for index and status)
+    $oidRx     = "1.3.6.1.4.1.17409.2.3.4.1.1.10"; // RX (for status)
+
+    $linesMac = explode("\n", trim(shell_exec("snmpwalk -v2c -c $community $oltIp $oidMac 2>&1")));
+    $linesRx  = explode("\n", trim(shell_exec("snmpwalk -v2c -c $community $oltIp $oidRx 2>&1")));
+
+    $gponTree = [];
+
+    /* =========================
+       Parse MAC for ONU Indices & Base Status
+    ==========================*/
+    foreach ($linesMac as $line) {
+        $index = null;
+        $mac_raw = null;
+
+        // Hex-STRING case
+        if (preg_match('/\.(\d+)\s+=\s+Hex-STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac_raw = trim($m[2]);
+        }
+        // STRING case (for non-printable MACs)
+        elseif (preg_match('/\.(\d+)\s+=\s+STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac_raw = trim($m[2], '"');
+        }
+
+        if ($index) {
+            // Clean MAC
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac_raw);
+            if (strlen($mac) == 12) {
+                $mac = strtoupper(chunk_split($mac, 2, ':'));
+                $mac = rtrim($mac, ':');
+            } else {
+                $mac = $mac_raw;  // Keep as is if not valid
+            }
+
+            // Assume PON from index (index % 8 for PON 0-7, +1 for 1-8)
+            $pon = ((int)$index % 8) + 1;
+            $onuName = "ONU{$pon}/{$index}";
+
+            $gponTree[$index] = [
+                'name' => $onuName,
+                'pon' => $pon,
+                'mac' => $mac,
+                'status' => 'Offline'  // Default
+            ];
+        }
+    }
+
+    /* =========================
+       Update Status from RX (if RX exists, Online)
+    ==========================*/
+    foreach ($linesRx as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+STRING:\s*"?(0x[0-9A-Fa-f]+|E6|CS|)"?/', $line, $m)) {
+            $index = $m[1];
+            $raw_rx = trim($m[2], '"');
+
+            if (isset($gponTree[$index]) && !empty($raw_rx)) {
+                $gponTree[$index]['status'] = 'Connected';  // RX data means connected
             }
         }
     }
-    return $data;
-}
 
-// Fetch all SNMP data
-$onuData = snmpBulkFetch($community, $oltIp, $oids);
+    /* =========================
+       Build Graph Data
+    ==========================*/
+    $links = [];
+    $nodesColor = [];
 
-// Map SNMP oper_status to readable
-$statusMap = [1=>'Connected', 2=>'Down', 3=>'Testing',4=>'Unknown',5=>'Dormant',6=>'Not Present',7=>'Lower Layer Down'];
-foreach($onuData as $idx=>$onu){
-    $onuData[$idx]['status'] = $statusMap[$onu['oper_status'] ?? 0] ?? 'Unknown';
-}
+    $nodesColor['OLT'] = '#000000';  // Black for OLT
 
-// Build GPON tree dynamically
-$gponTree = [];
-foreach($onuData as $onu){
-    $name = $onu['descr'] ?? '';
-    $status = $onu['status'] ?? 'Unknown';
+    foreach ($gponTree as $index => $data) {
+        $ponName = "PON{$data['pon']}";
+        $onuName = $data['name'];
 
-    // Match ONU01/02
-    if (preg_match('/^ONU(\d+)\/(\d+)$/', $name, $m)) {
-        $pon = "PON" . $m[1];     // PON01
-        $onuName = "ONU" . $m[1] . "/" . $m[2]; // ONU01/02
+        // OLT -> PON
+        if (!in_array(['OLT', $ponName], $links)) {
+            $links[] = ['OLT', $ponName];
+        }
+        $nodesColor[$ponName] = '#007bff';  // Blue for PON
 
-        $gponTree[$pon]['onus'][] = [
-            'name' => $onuName,
-            'status' => $status
-        ];
+        // PON -> ONU
+        $links[] = [$ponName, $onuName];
+        $nodesColor[$onuName] = ($data['status'] == 'Connected') ? 'green' : 'red';
     }
-}
 
-// Prepare Highcharts links & node colors
-$links = [];
-$nodesColor = [];
-foreach($gponTree as $port=>$data){
-    $links[] = ['OLT', $port];
-    $nodesColor[$port] = '#007bff';
-
-    foreach($data['onus'] ?? [] as $onu){
-        $links[] = [$port, $onu['name']];
-        $color = match(strtolower($onu['status'])){
-            'connected'=>'green',
-            'down'=>'red',
-            default=>'orange'
-        };
-        $nodesColor[$onu['name']] = $color;
+    // Safety fallback
+    if (empty($links)) {
+        $links = [['OLT', 'NO_DATA']];
+        $nodesColor['NO_DATA'] = 'gray';
     }
-}
-$nodesColor['OLT'] = '#000000';
+
 ?>
 
 <div id="container" style="height: 600px;"></div>
@@ -555,7 +585,7 @@ $nodesColor['OLT'] = '#000000';
 <script>
 Highcharts.chart('container', {
     chart: { type: 'networkgraph', marginTop: 80 },
-    title: { text: 'OLT → GPON → ONU Network Diagram (Dynamic SNMP)' },
+    title: { text: 'OLT → EPON → ONU Network Diagram (Dynamic SNMP)' },
     plotOptions: {
         networkgraph: {
             keys: ['from', 'to'],
@@ -568,8 +598,8 @@ Highcharts.chart('container', {
         data: <?php echo json_encode($links); ?>,
         nodes: <?php
             $nodes = [];
-            foreach($nodesColor as $id=>$color){
-                $nodes[] = ['id'=>$id, 'color'=>$color];
+            foreach($nodesColor as $id => $color){
+                $nodes[] = ['id' => $id, 'color' => $color];
             }
             echo json_encode($nodes);
         ?>
@@ -578,110 +608,247 @@ Highcharts.chart('container', {
 </script>
 
 <?php
-}elseif($vendor == 5){
-$oltIp = $ip;
-$community = $community;
+}
+elseif ($vendor == 5) {
 
-$oids = [
-    'descr' => "1.3.6.1.2.1.2.2.1.2",
-    'oper_status' => "1.3.6.1.2.1.2.2.1.8"
-];
+    $oltIp     = $ip;
+    $community = $community;
 
-// SNMP fetch function
-function snmpBulkFetch($community, $oltIp, $oids){
-    $data = [];
-    foreach($oids as $key=>$oid){
-        $lines = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oid 2>&1")));
-        foreach($lines as $line){
-            if(preg_match('/\.(\d+)\s*=\s*(?:STRING|INTEGER):\s*"?(.+?)"?$/', $line, $m)){
-                $index = $m[1];
-                $value = $m[2];
-                $data[$index][$key] = $value;
+    /* =========================
+       ECOM EPON OIDs (Tested & Working)
+    ==========================*/
+    $oidMac    = "1.3.6.1.4.1.17409.2.3.4.1.1.7";    // MAC (প্রাইমারি)
+    $oidRx     = "1.3.6.1.4.1.17409.2.3.4.1.1.10";   // RX Power (স্ট্যাটাস ডিটারমিন করার জন্য)
+
+    function snmpLines($community, $ip, $oid){
+        $cmd = "snmpwalk -v2c -c " . escapeshellarg($community) . " $ip $oid 2>&1";
+        $output = shell_exec($cmd);
+        return explode("\n", trim($output ?? ''));
+    }
+
+    $linesMac = snmpLines($community, $oltIp, $oidMac);
+    $linesRx  = snmpLines($community, $oltIp, $oidRx);
+
+    $gponTree = [];
+    $onuCount = 0;
+
+    /* =========================
+       MAC থেকে ONU লিস্ট তৈরি
+    ==========================*/
+    foreach ($linesMac as $line) {
+        $mac = null;
+        $index = null;
+
+        // Hex-STRING পার্স
+        if (preg_match('/\.(\d+)\s+=\s+Hex-STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac_raw = trim($m[2]);
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac_raw);
+            $mac = strtoupper(chunk_split($mac, 2, ':'));
+            $mac = rtrim($mac, ':');
+
+            // ভ্যালিড MAC চেক (17 ক্যারেক্টার)
+            if (strlen($mac) != 17 || $mac == '00:00:00:00:00:00') {
+                $mac = null;
+            }
+        }
+        // STRING পার্স (কিছু ক্ষেত্রে আসতে পারে)
+        elseif (preg_match('/\.(\d+)\s+=\s+STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac_raw = trim($m[2]);
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac_raw);
+            if (strlen($mac) == 12) {
+                $mac = strtoupper(chunk_split($mac, 2, ':'));
+            } else {
+                $mac = null;
+            }
+        }
+
+        if ($mac && $index) {
+            $pon = substr($index, -4, 1) + 1; // আনুমানিক PON (1-8)
+            $ponName = "PON{$pon}";
+            $onuName = "ONU{$pon}-{$index}";
+
+            // PON গ্রুপ তৈরি
+            if (!isset($gponTree[$ponName])) {
+                $gponTree[$ponName] = [];
+            }
+
+            $gponTree[$ponName][] = [
+                'name'   => $onuName,
+                'mac'    => $mac,
+                'index'  => $index,
+                'status' => 'Down' // ডিফল্ট
+            ];
+            $onuCount++;
+        }
+    }
+
+    /* =========================
+       RX Power থেকে Status আপডেট
+    ==========================*/
+    foreach ($linesRx as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+STRING:\s*"?(0x[0-9A-Fa-f]+|E6|CS|)"?/', $line, $m)) {
+            $index = $m[1];
+            $raw = trim($m[2], '"');
+
+            // RX আছে মানে Online
+            if (!empty($raw) && $raw != '' && strpos($raw, '0x') === 0) {
+                // সব PON/ONU গ্রুপে খোঁজো
+                foreach ($gponTree as $ponName => &$ponData) {
+                    foreach ($ponData as &$onu) {
+                        if ($onu['index'] == $index) {
+                            $onu['status'] = 'Connected';
+                            $onu['rx'] = $raw;
+                            break 2;
+                        }
+                    }
+                }
             }
         }
     }
-    return $data;
-}
 
-// Fetch all SNMP data
-$onuData = snmpBulkFetch($community, $oltIp, $oids);
+    /* =========================
+       Build Graph Data
+    ==========================*/
+    $links = [];
+    $nodesColor = [];
+    $nodesLabel = [];
 
-// Map SNMP oper_status to readable
-$statusMap = [1=>'Connected', 2=>'Down', 3=>'Testing',4=>'Unknown',5=>'Dormant',6=>'Not Present',7=>'Lower Layer Down'];
-foreach($onuData as $idx=>$onu){
-    $onuData[$idx]['status'] = $statusMap[$onu['oper_status'] ?? 0] ?? 'Unknown';
-}
+    $nodesColor['OLT'] = '#000000';
+    $nodesLabel['OLT'] = 'OLT';
 
-// Build GPON tree dynamically
-$gponTree = [];
-foreach($onuData as $onu){
-    $name = $onu['descr'] ?? '';
-    $status = $onu['status'] ?? 'Unknown';
+    foreach ($gponTree as $ponName => $ponData) {
+        // OLT → PON
+        $links[] = ['OLT', $ponName];
+        $nodesColor[$ponName] = '#007bff'; // নীল PON
+        $nodesLabel[$ponName] = $ponName;
 
-    // Match ONU01/02
-    if (preg_match('/^ONU(\d+)\/(\d+)$/', $name, $m)) {
-        $pon = "PON" . $m[1];     // PON01
-        $onuName = "ONU" . $m[1] . "/" . $m[2]; // ONU01/02
+        // PON → ONU গুলো
+        $connectedCount = 0;
+        foreach ($ponData as $onu) {
+            $links[] = [$ponName, $onu['name']];
+            
+            // ONU স্ট্যাটাস অনুযায়ী কালার
+            $nodesColor[$onu['name']] = 
+                ($onu['status'] == 'Connected') ? 'green' : 'red';
+            $nodesLabel[$onu['name']] = $onu['name'];
+            
+            if ($onu['status'] == 'Connected') $connectedCount++;
+        }
 
-        $gponTree[$pon]['onus'][] = [
-            'name' => $onuName,
-            'status' => $status
-        ];
+        // PON নোডে কানেক্টেড ONU কাউন্ট যোগ
+        $nodesLabel[$ponName] .= "\n({$connectedCount}/" . count($ponData) . ")";
     }
-}
 
-// Prepare Highcharts links & node colors
-$links = [];
-$nodesColor = [];
-foreach($gponTree as $port=>$data){
-    $links[] = ['OLT', $port];
-    $nodesColor[$port] = '#007bff';
-
-    foreach($data['onus'] ?? [] as $onu){
-        $links[] = [$port, $onu['name']];
-        $color = match(strtolower($onu['status'])){
-            'connected'=>'green',
-            'down'=>'red',
-            default=>'orange'
-        };
-        $nodesColor[$onu['name']] = $color;
+    // Safety fallback
+    if (empty($links)) {
+        $links = [['OLT','NO_DATA']];
+        $nodesColor['NO_DATA'] = 'gray';
+        $nodesLabel['NO_DATA'] = 'No ONU Found';
     }
-}
-$nodesColor['OLT'] = '#000000';
+
 ?>
 
-<div id="container" style="height: 600px;"></div>
+<div id="container" style="height: 600px; margin: 0 auto"></div>
 
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <script src="https://code.highcharts.com/modules/networkgraph.js"></script>
 
 <script>
 Highcharts.chart('container', {
-    chart: { type: 'networkgraph', marginTop: 80 },
-    title: { text: 'OLT → GPON → ONU Network Diagram (Dynamic SNMP)' },
+    chart: { 
+        type: 'networkgraph', 
+        marginTop: 80,
+        backgroundColor: 'transparent'
+    },
+    title: { 
+        text: 'OLT → EPON → ONU Network Diagram (Dynamic SNMP)',
+        style: { fontSize: '16px', fontWeight: 'bold' }
+    },
+    subtitle: { 
+        text: 'Total ONUs: <?= $onuCount ?> | Connected: <?= array_sum(array_map(function($pon) { return count(array_filter($pon, fn($onu) => $onu['status'] == 'Connected')); }, $gponTree)) ?>',
+        style: { fontSize: '12px' }
+    },
     plotOptions: {
         networkgraph: {
             keys: ['from', 'to'],
-            layoutAlgorithm: { enableSimulation: false, integration: 'verlet', linkLength: 100 }
+            layoutAlgorithm: { 
+                enableSimulation: true, 
+                integration: 'verlet', 
+                linkLength: 120,
+                maxIterations: 100
+            },
+            link: {
+                width: 2,
+                color: {
+                    linearGradient: { x1: 0, y1: 0, x2: 1, y2: 0 },
+                    stops: [[0, '#e6e6e6'], [1, '#cccccc']]
+                }
+            },
+            marker: {
+                radius: 12,
+                fillOpacity: 0.9,
+                states: {
+                    hover: { radiusPlus: 5 }
+                }
+            },
+            dataLabels: { 
+                enabled: true,
+                linkFormat: '',
+                allowOverlap: true,
+                style: { fontSize: '10px', fontWeight: 'bold' }
+            }
         }
     },
     series: [{
-        marker: { radius: 10 },
-        dataLabels: { enabled: true },
+        marker: { 
+            radius: 15,
+            fillOpacity: 0.95
+        },
+        dataLabels: { 
+            enabled: true,
+            format: '{point.id}',
+            style: { 
+                fontSize: '11px', 
+                fontWeight: 'bold',
+                textOutline: '1px contrast'
+            }
+        },
         data: <?php echo json_encode($links); ?>,
         nodes: <?php
             $nodes = [];
-            foreach($nodesColor as $id=>$color){
-                $nodes[] = ['id'=>$id, 'color'=>$color];
+            foreach($nodesColor as $id => $color) {
+                $label = $nodesLabel[$id] ?? $id;
+                $nodes[] = [
+                    'id' => $id, 
+                    'color' => $color,
+                    'label' => $label,
+                    'mass' => (strpos($id, 'PON') === 0) ? 5 : 3
+                ];
             }
             echo json_encode($nodes);
         ?>
-    }]
+    }],
+    tooltip: {
+        pointFormat: '{point.id}: <b>{point.label}</b><br/>Status: {point.status || "N/A"}'
+    },
+    credits: { enabled: false }
 });
 </script>
 
+<style>
+#container {
+    max-width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+</style>
+
 <?php
 }
+
 
 else{
     echo "Invalid vendor";

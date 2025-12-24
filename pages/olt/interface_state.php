@@ -616,316 +616,249 @@ usort($validInterfaces, function ($a, $b) {
 
 
 }else if ($vendor == 4){
-$oltIp = $ip;
-$community = $community;
+    $oltIp = $ip;
+    $community = $community;
 
-// === OIDs ===
-$oidIfDescr      = "1.3.6.1.2.1.2.2.1.2";
-$oidIfOperStatus = "1.3.6.1.2.1.2.2.1.8";
-$oidOnuUpTime    = "1.3.6.1.2.1.2.2.1.9";
-$oidMacAddr      = "1.3.6.1.4.1.37950.1.1.5.12.1.12.1.6";
+    // === OIDs ===
+    $oidIfDescr      = "1.3.6.1.2.1.2.2.1.2";
+    $oidIfOperStatus = "1.3.6.1.2.1.2.2.1.8";
+    $oidOnuUpTime    = "1.3.6.1.2.1.2.2.1.9";
+    $oidMacAddr      = "1.3.6.1.4.1.37950.1.1.5.12.1.12.1.6";
 
-// === SNMP Fetch Function ===
-function snmpFetch($oid)
-{
-    global $oltIp, $community;
-    $cmd = "snmpwalk -v2c -c $community -t 4 -r 1 $oltIp $oid";
-    $out = shell_exec($cmd);
-    return $out ? explode("\n", trim($out)) : [];
-}
+    // MAC Table OID (OLT)
+    $oidMacTable     = "1.3.6.1.4.1.37950.1.1.5.12.1.8.1.2"; // উদাহরণ, আপনার OLT অনুযায়ী ঠিক করুন
 
-// === Fetch Data ===
-$descrLines  = snmpFetch($oidIfDescr);
-$statusLines = snmpFetch($oidIfOperStatus);
-$uptimeLines = snmpFetch($oidOnuUpTime);
-$macLines    = snmpFetch($oidMacAddr);
-
-$interfaceData = [];
-
-// --- Interface Name ---
-foreach ($descrLines as $line) {
-    if (preg_match('/\.(\d+) = STRING: (.+)/', $line, $m)) {
-        $interfaceData[$m[1]] = [
-            'name' => trim($m[2], '"')
-        ];
-    }
-}
-
-// --- Interface Status (FIXED) ---
-$statusMap = [
-    1 => 'Connected',
-    2 => 'Down',
-    3 => 'Testing',
-    4 => 'Unknown',
-    5 => 'Dormant',
-    6 => 'Not Present',
-    7 => 'Lower Layer Down'
-];
-
-foreach ($statusLines as $line) {
-    // Updated regex to handle both formats: INTEGER: 1 or INTEGER: up(1)
-    if (preg_match('/\.(\d+) = INTEGER: (?:\w+\()?(\d+)\)?/', $line, $m)) {
-        $index = $m[1];
-        $statusCode = (int)$m[2];
-        $interfaceData[$index]['status'] = $statusMap[$statusCode] ?? 'Unknown';
-    }
-}
-
-// --- Interface Uptime ---
-foreach ($uptimeLines as $line) {
-    if (preg_match('/\.(\d+) = Timeticks: \((\d+)\)/', $line, $m)) {
-        $sec = (int)$m[2] / 100;
-        $days = floor($sec / 86400);
-        $hours = floor(($sec % 86400) / 3600);
-        $mins = floor(($sec % 3600) / 60);
-        $interfaceData[$m[1]]['uptime'] = sprintf("%dd %dh %dm", $days, $hours, $mins);
-    }
-}
-
-// --- Filter only ONUs (EPONx/x:x)
-$onuPorts = array_filter($interfaceData, function ($d) {
-    if (!isset($d['name'])) return false;
-
-    return preg_match('/^EPON\d+\/\d+:\d+$/i', $d['name'])   // 4-port
-        || preg_match('/^EPON\d+ONU\d+/i', $d['name']);    // 8-port
-});
-
-// --- Sort ONUs by EPON port ---
-uasort($onuPorts, function ($a, $b) {
-
-    // 4-port format
-    if (preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $a['name'], $x) &&
-        preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $b['name'], $y)) {
-        return [$x[1], $x[2], $x[3]] <=> [$y[1], $y[2], $y[3]];
+    // === SNMP Fetch Function ===
+    function snmpFetch($oid)
+    {
+        global $oltIp, $community;
+        $cmd = "snmpwalk -v2c -c $community -t 4 -r 1 $oltIp $oid";
+        $out = shell_exec($cmd);
+        return $out ? explode("\n", trim($out)) : [];
     }
 
-    // 8-port format
-    if (preg_match('/EPON(\d+)ONU(\d+)/i', $a['name'], $x) &&
-        preg_match('/EPON(\d+)ONU(\d+)/i', $b['name'], $y)) {
-        return [$x[1], $x[2]] <=> [$y[1], $y[2]];
+    // === Fetch Data ===
+    $descrLines  = snmpFetch($oidIfDescr);
+    $statusLines = snmpFetch($oidIfOperStatus);
+    $uptimeLines = snmpFetch($oidOnuUpTime);
+    $macLines    = snmpFetch($oidMacAddr);
+    $macTableLines = snmpFetch($oidMacTable);
+
+    $interfaceData = [];
+
+    // --- Interface Name ---
+    foreach ($descrLines as $line) {
+        if (preg_match('/\.(\d+) = STRING: (.+)/', $line, $m)) {
+            $interfaceData[$m[1]] = [
+                'name' => trim($m[2], '"')
+            ];
+        }
     }
 
-    return strcmp($a['name'], $b['name']);
-});
+    // --- Interface Status ---
+    $statusMap = [
+        1 => 'Connected', 2 => 'Down', 3 => 'Testing', 4 => 'Unknown',
+        5 => 'Dormant', 6 => 'Not Present', 7 => 'Lower Layer Down'
+    ];
 
-// --- MAC Address Mapping ---
-$macList = [];
-foreach ($macLines as $line) {
-    if (preg_match('/= STRING: "?([0-9A-Fa-f: -]+)"?$/', $line, $m)) {
-        $macList[] = trim($m[1]);
+    foreach ($statusLines as $line) {
+        if (preg_match('/\.(\d+) = INTEGER: (?:\w+\()?(\d+)\)?/', $line, $m)) {
+            $index = $m[1];
+            $statusCode = (int)$m[2];
+            $interfaceData[$index]['status'] = $statusMap[$statusCode] ?? 'Unknown';
+        }
     }
-}
 
-$onuKeys = array_keys($onuPorts);
-foreach ($onuKeys as $i => $key) {
-    $onuPorts[$key]['mac_addr'] = $macList[$i] ?? '-';
-}
+    // --- Interface Uptime ---
+    foreach ($uptimeLines as $line) {
+        if (preg_match('/\.(\d+) = Timeticks: \((\d+)\)/', $line, $m)) {
+            $sec = (int)$m[2] / 100;
+            $days = floor($sec / 86400);
+            $hours = floor(($sec % 86400) / 3600);
+            $mins = floor(($sec % 3600) / 60);
+            $interfaceData[$m[1]]['uptime'] = sprintf("%dd %dh %dm", $days, $hours, $mins);
+        }
+    }
 
-// === Debug if no data ===
-if (empty($onuPorts)) {
-    echo "<div class='alert alert-warning text-center mt-4'>
-            ⚠ No ONU data found!<br>
-            <code>Check OLT IP: $oltIp | Community: $community</code>
-          </div>";
-}
-?>
+    // --- Filter only ONUs ---
+    $onuPorts = array_filter($interfaceData, function ($d) {
+        if (!isset($d['name'])) return false;
+        return preg_match('/^EPON\d+\/\d+:\d+$/i', $d['name']) || preg_match('/^EPON\d+ONU\d+/i', $d['name']);
+    });
 
-<div class="container py-4">
+    // --- Sort ONUs ---
+    uasort($onuPorts, function ($a, $b) {
+        if (preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $a['name'], $x) &&
+            preg_match('/EPON(\d+)\/(\d+):(\d+)/i', $b['name'], $y)) {
+            return [$x[1], $x[2], $x[3]] <=> [$y[1], $y[2], $y[3]];
+        }
+        if (preg_match('/EPON(\d+)ONU(\d+)/i', $a['name'], $x) &&
+            preg_match('/EPON(\d+)ONU(\d+)/i', $b['name'], $y)) {
+            return [$x[1], $x[2]] <=> [$y[1], $y[2]];
+        }
+        return strcmp($a['name'], $b['name']);
+    });
 
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 text-primary fw-bold">🖧 ONU Port Overview</h5>
-            <div>
-                <span class="badge bg-info text-dark me-3">Total ONUs: <?= count($onuPorts) ?></span>
-                <button onclick="location.reload()" class="btn btn-sm btn-outline-primary">🔄 Refresh</button>
+    // --- ONU MAC ---
+    $macList = [];
+    foreach ($macLines as $line) {
+        if (preg_match('/= STRING: "?([0-9A-Fa-f: -]+)"?$/', $line, $m)) {
+            $macList[] = trim($m[1]);
+        }
+    }
+
+    $onuKeys = array_keys($onuPorts);
+    foreach ($onuKeys as $i => $key) {
+        $onuPorts[$key]['mac_addr'] = $macList[$i] ?? '-';
+    }
+
+    // --- MAC Table Mapping ---
+    $oltMacMap = [];
+    foreach ($macTableLines as $line) {
+        // উদাহরণ ফরম্যাট: EPON0/1:1 4C:D7:C8:CE:AD:0E
+        if (preg_match('/(EPON[\d\/:]+)\s+([0-9A-Fa-f:]+)/', $line, $m)) {
+            $oltMacMap[strtoupper($m[1])][] = strtoupper($m[2]);
+        }
+    }
+
+    function onuNameToSnmpFormat($name) {
+        if (preg_match('/EPON(\d)(\d)ONU(\d+)/i', $name, $m)) {
+            return "EPON{$m[1]}/{$m[2]}:{$m[3]}";
+        }
+        return $name;
+    }
+
+    foreach ($onuKeys as $key) {
+        $snmpId = strtoupper(onuNameToSnmpFormat($onuPorts[$key]['name']));
+        $onuPorts[$key]['mac_table'] = isset($oltMacMap[$snmpId]) ? implode(', ', $oltMacMap[$snmpId]) : 'No';
+    }
+
+    // === HTML Output ===
+    ?>
+    <div class="container py-4">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-primary fw-bold">🖧 ONU Port Overview</h5>
+                <div>
+                    <span class="badge bg-info text-dark me-3">Total ONUs: <?= count($onuPorts) ?></span>
+                    <button onclick="location.reload()" class="btn btn-sm btn-outline-primary">🔄 Refresh</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-striped table-bordered align-middle mb-0">
-                    <thead class="table-primary text-center">
-                        <tr>
-                            <th>SL</th>
-                            <th>Interface</th>
-                            <th>Description</th>
-                            <th>Status</th>
-                            <th>MAC Address</th>
-                            <th>Uptime</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($onuPorts)): ?>
-                            <tr><td colspan="6" class="text-center text-danger">⚠ No ONU data found</td></tr>
-                        <?php else: ?>
-                            <?php $sl = 1; foreach ($onuPorts as $onu): ?>
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped table-bordered align-middle mb-0">
+                        <thead class="table-primary text-center">
+                            <tr>
+                                <th>SL</th>
+                                <th>Interface</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>MAC Address</th>
+                                <th>MAC Table</th>
+                                <th>Uptime</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($onuPorts)): ?>
+                                <tr><td colspan="7" class="text-center text-danger">⚠ No ONU data found</td></tr>
+                            <?php else: $sl=1; foreach ($onuPorts as $onu): ?>
                                 <tr class="text-center">
                                     <td><?= $sl++ ?></td>
                                     <td><code><?= htmlspecialchars($onu['name']) ?></code></td>
-
-                                    <td>
-                                        <?php
-                                        $mac = $onu['mac_addr'] ?? '';
-                                        if (isset($obj) && !empty($mac)) {
-                                            $agent = $obj->details_by_cond('tbl_agent', "onumac = '$mac'");
-                                            $customerName = $agent['ag_name'] ?? '-';
-                                            $customerIp = $agent['ip'] ?? '-';
-                                            $agentId = $agent['ag_id'] ?? '-';
-                                            $customerId = $agent['cus_id'] ?? '-';
-                                        } else {
-                                            $customerName = '-';
-                                            $customerIp = '-';
-                                            $agentId = '-';
-                                            $customerId = '-';
-                                        }
-                                        ?>
-
-                                        <a href="?page=customer_ledger&token=<?= urlencode($agentId) ?>"
-                                           class="text-decoration-none fw-semibold">
-                                           <?= htmlspecialchars($customerName) ?>
-                                        </a>
-                                        <br>
-                                        <small class="text-muted">
-                                            <?= htmlspecialchars($customerIp) ?>
-                                        </small><br>
-
-                                        <?php if ($customerId !== '-' && $customerId != ''): ?>
-                                            <a href="?page=customer_ledger&token=<?= urlencode($agentId) ?>"
-                                               class="btn btn-info btn-sm px-2 py-1">View</a>
-                                        <?php else: ?>
-                                            <button class="btn btn-secondary btn-sm px-2 py-1" disabled>No Customer</button>
-                                        <?php endif; ?>
-                                    </td>
-
-                                    <?php
-                                    $status = $onu['status'] ?? 'Unknown';
-                                    $badgeClass = match ($status) {
+                                    <td>-</td>
+                                    <td><span class="badge <?= match($onu['status'] ?? 'Unknown') {
                                         'Connected' => 'bg-success',
                                         'Down' => 'bg-danger',
                                         'Testing' => 'bg-warning text-dark',
-                                        'Dormant', 'Lower Layer Down' => 'bg-secondary',
+                                        'Dormant','Lower Layer Down' => 'bg-secondary',
                                         default => 'bg-dark',
-                                    };
-                                    ?>
-                                    <td><span class="badge <?= $badgeClass ?>"><?= $status ?></span></td>
+                                    } ?>"><?= $onu['status'] ?? 'Unknown' ?></span></td>
                                     <td><code><?= $onu['mac_addr'] ?? '-' ?></code></td>
+                                    <td><code><?= $onu['mac_table'] ?></code></td>
                                     <td><?= $onu['uptime'] ?? '-' ?></td>
                                 </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            <?php endforeach; endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
-</div>
-
-
-<?php
-
-}elseif ($vendor == 5){
-
-$oltIp = $ip;
-$community = $community;
-
-
-$interfaces = [];
-
-$oidIfDescr      = "1.3.6.1.2.1.2.2.1.2";        // Interface Name
-$oidIfOperStatus = "1.3.6.1.2.1.2.2.1.8";        // Interface Status
-$oidIfMac        = "1.3.6.1.2.1.2.2.1.6";        // MAC Address
-// $oidTxPower      = "1.3.6.1.4.1.50224.3.3.3.1.4"; // TX Power
-// $oidRxPower      = "1.3.6.1.4.1.50224.3.3.3.1.5"; // RX Power
-$oidRxPower      = "1.3.6.1.4.1.17409.2.3.6.1.1.11";  
-$oidTxPower      = "1.3.6.1.4.1.17409.2.3.6.1.1.12"; 
-
-// =====================
-// Fetch SNMP data
-// =====================
-$linesName   = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oidIfDescr 2>&1")));
-$linesStatus = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oidIfOperStatus 2>&1")));
-$linesMac    = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oidIfMac 2>&1")));
-$linesTx     = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oidTxPower 2>&1")));
-$linesRx     = explode("\n", trim(shell_exec("snmpbulkwalk -v2c -c $community -t 2 -r 2 $oltIp $oidRxPower 2>&1")));
-
-// =====================
-// Parse Interface Names
-// =====================
-foreach ($linesName as $line) {
-    if (preg_match('/\.(\d+)\s*=\s*STRING:\s*"?(.+?)"?$/', $line, $m)) {
-        $index = $m[1];
-        $name  = $m[2];
-        if (!preg_match('/^ONU/i', $name)) continue; // Only ONU
-        $interfaces[$index]['name'] = $name;
-    }
+    <?php
 }
+elseif ($vendor == 5) {
 
-// =====================
-// Parse Status
-// =====================
-$statusMap = [
-    1 => 'Up',
-    2 => 'Down',
-    3 => 'Testing',
-    4 => 'Unknown',
-    5 => 'Dormant',
-    6 => 'Not Present',
-    7 => 'Lower Layer Down'
-];
+    $oltIp     = $ip;
+    $community = $community;
 
-foreach ($linesStatus as $line) {
-    if (preg_match('/\.(\d+)\s*=\s*INTEGER:\s*(\d+)/', $line, $m)) {
-        $index = $m[1];
-        if (!isset($interfaces[$index])) continue;
-        $interfaces[$index]['status'] = $statusMap[$m[2]] ?? 'Unknown';
+    $interfaces = [];
+
+    /* ===============================
+       ECOM / EasyPath EPON OIDs (Updated & Tested)
+    ================================*/
+    $oidMac = "1.3.6.1.4.1.17409.2.3.4.1.1.7";    // ONU MAC (সফল)
+    $oidRx  = "1.3.6.1.4.1.17409.2.3.4.1.1.10";   // RX Optical Power (সফল)
+
+    $linesMac = explode("\n", trim(shell_exec("snmpwalk -v2c -c $community $oltIp $oidMac")));
+    $linesRx  = explode("\n", trim(shell_exec("snmpwalk -v2c -c $community $oltIp $oidRx")));
+
+    /* ===============================
+       MAC (প্রথমে MAC থেকে ONU তৈরি করা)
+    ================================*/
+    foreach ($linesMac as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+Hex-STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac = trim($m[2]);
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac);
+            $mac = strtoupper(chunk_split($mac, 2, ':'));
+            $mac = rtrim($mac, ':');
+
+            $interfaces[$index] = [
+                'mac' => $mac,
+                'status' => 'Offline'  // ডিফল্ট
+            ];
+        }
     }
-}
 
-// =====================
-// Parse MAC Address
-// =====================
-foreach ($linesMac as $line) {
-    if (preg_match('/\.(\d+)\s*=\s*Hex-STRING:\s*(.+)$/', $line, $m)) {
-        $index = $m[1];
-        if (!isset($interfaces[$index])) continue;
-        $mac = strtolower(str_replace(' ', ':', trim($m[2])));
-        $interfaces[$index]['mac'] = $mac;
+    /* ===============================
+       RX POWER + স্ট্যাটাস আপডেট (RX আছে মানে Online)
+    ================================*/
+    foreach ($linesRx as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+STRING:\s*"?(0x[0-9A-Fa-f]+|E6|CS|)"?/', $line, $m)) {
+            $index = $m[1];
+            $raw   = trim($m[2], '"');
+
+            $rx_dbm = null;
+            if ($raw == 'E6') {
+                $rx_dbm = -25.0;
+            } elseif ($raw == 'CS') {
+                $rx_dbm = -30.0;
+            } elseif (strpos($raw, '0x') === 0) {
+                $hex = substr($raw, 2);
+                $int = hexdec($hex);
+                if ($int > 0x7FFF) $int -= 0x10000;
+                $rx_dbm = $int / 100.0;
+            }
+
+            if (isset($interfaces[$index])) {
+                $interfaces[$index]['rx'] = $rx_dbm;
+                // RX আছে + MAC আছে মানে Online
+                if ($rx_dbm !== null || !empty($raw)) {
+                    $interfaces[$index]['status'] = 'Online';
+                }
+            }
+        }
     }
-}
-
-// =====================
-// Parse TX Power
-// =====================
-foreach ($linesTx as $line) {
-    if (preg_match('/\.(\d+)\.(\d+)\.(\d+)\s*=\s*INTEGER:\s*(-?\d+)/', $line, $m)) {
-
-        $onuIndex = $m[3]; 
-        $value = $m[4] / 10; // convert to dBm
-
-        if (!isset($interfaces[$onuIndex])) continue;
-        $interfaces[$onuIndex]['tx'] = $value;
-    }
-}
-
-foreach ($linesRx as $line) {
-    if (preg_match('/\.(\d+)\.(\d+)\.(\d+)\s*=\s*INTEGER:\s*(-?\d+)/', $line, $m)) {
-
-        $onuIndex = $m[3];
-        $value = $m[4] / 10;
-
-        if (!isset($interfaces[$onuIndex])) continue;
-        $interfaces[$onuIndex]['rx'] = $value;
-    }
-}
 ?>
 
 <!-- ===================== HTML Table ===================== -->
 <div class="container py-4">
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 text-primary fw-bold">🖧 ONU Interface List (Name + Status + MAC + TX/RX )</h5>
+            <h5 class="mb-0 text-primary fw-bold">🖧 ONU Interface List (Name + Status + MAC + RX Power)</h5>
             <button onclick="location.reload()" class="btn btn-sm btn-outline-primary">🔄 Refresh</button>
         </div>
     </div>
@@ -937,28 +870,39 @@ foreach ($linesRx as $line) {
                     <thead class="table-primary text-center">
                         <tr>
                             <th>SL</th>
+                            <th>ONU Index</th>
                             <th>ONU Interface</th>
                             <th>Description</th>
                             <th>Status</th>
                             <th>MAC</th>
-                            
+                            <th>RX Power (dBm)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php $sl=1; foreach ($interfaces ?? [] as $index=>$d): ?>
+                        <?php $sl=1; foreach ($interfaces ?? [] as $index => $d): ?>
                             <?php
-                            $serial = isset($onu['mac']) ? trim($onu['mac']) : '';
+                            $mac = $d['mac'] ?? '-';
+                            $rx  = isset($d['rx']) && $d['rx'] !== null ? number_format($d['rx'], 2) . ' dBm' : '-';
 
-                            $agent = $obj->details_by_cond('tbl_agent', "onumac = '$serial'");
+                            // RX পাওয়ারের কালার
+                            $rx_class = '';
+                            if (isset($d['rx']) && $d['rx'] !== null) {
+                                if ($d['rx'] > 0) $rx_class = 'text-danger fw-bold'; // Overload
+                                elseif ($d['rx'] >= -8 && $d['rx'] <= -24) $rx_class = 'text-success fw-bold'; // Good
+                                elseif ($d['rx'] < -24) $rx_class = 'text-warning fw-bold'; // Weak
+                            }
+
+                            $agent = $obj->details_by_cond('tbl_agent', "onumac = '$mac'");
 
                             $customerName = $agent['ag_name'] ?? '-';
                             $customerIp   = $agent['ip']     ?? '-';
                             $agentId      = $agent['ag_id']  ?? '-';
                             $customerId   = $agent['cus_id'] ?? '-';
-                        ?>
+                            ?>
                             <tr class="text-center">
                                 <td><?= $sl++ ?></td>
-                                <td><code><?= htmlspecialchars($d['name'] ?? '-') ?></code></td>
+                                <td><code><?= htmlspecialchars($index) ?></code></td>
+                                <td><code>ONU-<?= htmlspecialchars($index) ?></code></td>
 
                                 <td class="text-center align-middle">
                                     <!-- Customer Name -->
@@ -974,10 +918,10 @@ foreach ($linesRx as $line) {
                                         </a>
                                     </small>
 
-                                    <!-- Button with customerId (cus_id) -->
+                                    <!-- View Button -->
                                     <?php if (!empty($customerId) && $customerId !== '-'): ?>
                                         <a href="?page=customer_ledger&token=<?= urlencode((string)$agentId) ?>"
-                                        class="btn btn-info btn-sm px-2 py-1 waves-effect waves-light">
+                                           class="btn btn-info btn-sm px-2 py-1 waves-effect waves-light">
                                             View
                                         </a>
                                     <?php else: ?>
@@ -987,25 +931,25 @@ foreach ($linesRx as $line) {
 
                                 <td>
                                     <?php
-                                        $status = $d['status'] ?? 'Unknown';
-                                        $badgeClass = match($status){
-                                            'Up'=>'bg-success',
-                                            'Down'=>'bg-danger',
-                                            'Testing'=>'bg-warning text-dark',
-                                            default=>'bg-secondary'
-                                        };
+                                    $status = $d['status'] ?? 'Offline';
+                                    $badgeClass = match($status) {
+                                        'Online' => 'bg-success',
+                                        'Offline' => 'bg-danger',
+                                        'Testing' => 'bg-warning text-dark',
+                                        default => 'bg-secondary'
+                                    };
                                     ?>
-                                    <span class="badge <?= $badgeClass ?>"><?= $status ?></span>
+                                    <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($status) ?></span>
                                 </td>
 
-                                <td><code><?= $d['mac'] ?? '-' ?></code></td>
-                                
+                                <td><code><?= htmlspecialchars($mac) ?></code></td>
+                                <td class="<?= $rx_class ?>"><?= htmlspecialchars($rx) ?></td>
                             </tr>
                         <?php endforeach; ?>
 
-                        <?php if(empty($interfaces)): ?>
+                        <?php if (empty($interfaces)): ?>
                             <tr>
-                                <td colspan="6" class="text-center text-danger">No ONU interfaces found</td>
+                                <td colspan="7" class="text-center text-danger">No ONU interfaces found. Check SNMP connection.</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -1015,7 +959,6 @@ foreach ($linesRx as $line) {
     </div>
 </div>
 <?php
-
 }
 
 

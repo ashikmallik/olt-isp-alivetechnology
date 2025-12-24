@@ -497,7 +497,154 @@ uasort($onuPorts, function ($a, $b) {
 </div>
 
 <?php
-}
+}else if ($vendor == 5) {
+
+    $oltIp     = $ip;
+    $community = $community;
+
+    /* =========================
+       OIDs
+    ==========================*/
+    $oidMac    = "1.3.6.1.4.1.17409.2.3.4.1.1.7";
+    $oidRx     = "1.3.6.1.4.1.17409.2.3.4.1.1.10";
+    $oidTx     = "1.3.6.1.4.1.17409.2.3.4.1.1.11";
+
+    function snmpLines($community, $ip, $oid){
+        $cmd = "snmpwalk -v2c -c " . escapeshellarg($community) . " $ip $oid 2>&1";
+        $output = shell_exec($cmd);
+        return explode("\n", trim($output ?? ''));
+    }
+
+    $linesMac = snmpLines($community, $oltIp, $oidMac);
+    $linesRx  = snmpLines($community, $oltIp, $oidRx);
+    $linesTx  = snmpLines($community, $oltIp, $oidTx);
+
+    $onus = [];
+
+    /* =========================
+       MAC - প্রাইমারি কী হিসেবে ব্যবহার
+    ==========================*/
+    foreach ($linesMac as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+Hex-STRING:\s+(.+)/', $line, $m)) {
+            $index = $m[1];
+            $mac_raw = trim($m[2]);
+
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac_raw);
+            $mac = strtoupper(chunk_split($mac, 2, ':'));
+            $mac = rtrim($mac, ':');
+
+            if (empty($mac) || strlen($mac) != 17) continue; // খারাপ MAC স্কিপ
+
+            $onus[$index]['mac'] = $mac;
+            $onus[$index]['name'] = "ONU-$index";
+            $onus[$index]['status'] = 'Offline'; // ডিফল্ট
+        } elseif (preg_match('/\.(\d+)\s+=\s+STRING:\s+(.+)/', $line, $m)) {
+            // কিছু লাইনে STRING আসতে পারে
+            $index = $m[1];
+            $mac_raw = trim($m[2]);
+            $mac = preg_replace('/[^0-9A-Fa-f]/', '', $mac_raw);
+            if (strlen($mac) == 12) {
+                $mac = strtoupper(chunk_split($mac, 2, ':'));
+                $onus[$index]['mac'] = rtrim($mac, ':');
+                $onus[$index]['name'] = "ONU-$index";
+                $onus[$index]['status'] = 'Offline';
+            }
+        }
+    }
+
+    /* =========================
+       RX Power - স্ট্যাটাস আপডেট (RX আছে মানে Online)
+    ==========================*/
+    foreach ($linesRx as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+STRING:\s*"?(0x[0-9A-Fa-f]+|E6|CS|)"?/', $line, $m)) {
+            $index = $m[1];
+            if (!isset($onus[$index])) continue;
+
+            $raw = trim($m[2], '"');
+            $rx_dbm = null;
+
+            if ($raw == 'E6') $rx_dbm = -25.0;
+            elseif ($raw == 'CS') $rx_dbm = -30.0;
+            elseif (strpos($raw, '0x') === 0) {
+                $hex = substr($raw, 2);
+                $int = hexdec($hex);
+                if ($int > 0x7FFF) $int -= 0x10000;
+                $rx_dbm = $int / 100.0;
+            }
+
+            $onus[$index]['rx'] = ($rx_dbm !== null) ? number_format($rx_dbm, 2) . " dBm" : '-';
+
+            // RX আছে মানে Online
+            if ($rx_dbm !== null || $raw !== '') {
+                $onus[$index]['status'] = 'Online';
+            }
+        }
+    }
+
+    /* =========================
+       TX Power
+    ==========================*/
+    foreach ($linesTx as $line) {
+        if (preg_match('/\.(\d+)\s+=\s+STRING:\s*"?(0x[0-9A-Fa-f]+|)"?/', $line, $m)) {
+            $index = $m[1];
+            if (!isset($onus[$index])) continue;
+
+            $raw = trim($m[2], '"');
+            $tx_dbm = null;
+            if (strpos($raw, '0x') === 0) {
+                $hex = substr($raw, 2);
+                $int = hexdec($hex);
+                if ($int > 0x7FFF) $int -= 0x10000;
+                $tx_dbm = $int / 100.0;
+            }
+            $onus[$index]['tx'] = ($tx_dbm !== null) ? number_format($tx_dbm, 2) . " dBm" : '-';
+        }
+    }
+?>
+    <div class="container py-4">
+    <span class="badge bg-info text-dark mb-3">
+        Total ONUs: <?= count($onus) ?>
+    </span>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-primary text-center">
+                <tr>
+                    <th>SL</th>
+                    <th>ONU Index</th>
+                    <th>Status</th>
+                    <th>RX Power</th>
+                    <th>TX Power</th>
+                    <th>MAC</th>
+                </tr>
+            </thead>
+            <tbody class="text-center">
+            <?php $sl=1; foreach ($onus as $index => $o): ?>
+                <tr>
+                    <td><?= $sl++ ?></td>
+                    <td><?= htmlspecialchars($o['name'] ?? '-') ?></td>
+                    <td>
+                        <span class="badge <?= ($o['status'] ?? 'Offline') == 'Online' ? 'bg-success' : 'bg-danger' ?>">
+                            <?= htmlspecialchars($o['status'] ?? 'Offline') ?>
+                        </span>
+                    </td>
+                    <td><?= htmlspecialchars($o['rx'] ?? '-') ?></td>
+                    <td><?= htmlspecialchars($o['tx'] ?? '-') ?></td>
+                    <td><code><?= htmlspecialchars($o['mac'] ?? '-') ?></code></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($onus)): ?>
+                <tr>
+                    <td colspan="6" class="text-center text-danger">No valid ONU data found. Check if SNMP is responding correctly.</td>
+                </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php }
+
+
 
 
 
